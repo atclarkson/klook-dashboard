@@ -620,3 +620,28 @@ td {
     grid-template-columns: 1fr;
   }
 }
+
+.comparison-positive {
+  color: #15803d !important;
+  font-weight: 700;
+}
+
+.comparison-negative {
+  color: #dc2626 !important;
+  font-weight: 700;
+}
+
+.comparison-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.comparison-positive {
+  color: #15803d !important;
+}
+
+.comparison-negative {
+  color: #dc2626 !important;
+}

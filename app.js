@@ -45,6 +45,12 @@ const dailyReportTable = document.querySelector("#dailyReportTable tbody");
 const monthlySummary = document.getElementById("monthlySummary");
 const monthlySummaryGrid = document.getElementById("monthlySummaryGrid");
 
+const comparisonMode = document.getElementById("comparisonMode");
+const rowsFoundCompareEl = document.getElementById("rowsFoundCompare");
+const netCommissionCompareEl = document.getElementById("netCommissionCompare");
+const paymentRowsCompareEl = document.getElementById("paymentRowsCompare");
+const refundRowsCompareEl = document.getElementById("refundRowsCompare");
+
 initApp();
 
 async function initApp() {
@@ -144,6 +150,8 @@ document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
     refreshDashboardFromStoredData();
   });
 });
+
+comparisonMode.addEventListener("change", refreshDashboardFromStoredData);
 
 // Core Functions
 function openDatabase() {
@@ -305,38 +313,62 @@ function normalizeRow(fileName, row) {
 
 async function refreshDashboardFromStoredData() {
   const allTransactions = await getAllTransactions();
+  const selectedRange = getSelectedDateRange(allTransactions);
   const transactions = filterTransactionsByDateRange(allTransactions);
+  const comparisonTransactions =
+    comparisonMode.value === "previous" && selectedRange
+      ? filterTransactionsByExplicitRange(
+          allTransactions,
+          selectedRange.previousStartDate,
+          selectedRange.previousEndDate,
+        )
+      : [];
 
   if (!allTransactions.length) {
     return;
   }
 
-  let netCommission = 0;
-  let paymentRows = 0;
-  let refundRows = 0;
-  const actionDates = [];
+  const currentMetrics = calculateMetrics(transactions);
+  const comparisonMetrics = calculateMetrics(comparisonTransactions);
 
-  transactions.forEach((row) => {
-    netCommission += row.commissionAmountUsd;
-
-    if (row.actionType === "Payment") {
-      paymentRows += 1;
-    }
-
-    if (row.actionType === "Refund") {
-      refundRows += 1;
-    }
-
-    if (row.actionDate) {
-      actionDates.push(row.actionDate);
-    }
-  });
+  const netCommission = currentMetrics.netCommission;
+  const paymentRows = currentMetrics.paymentRows;
+  const refundRows = currentMetrics.refundRows;
+  const actionDates = currentMetrics.actionDates;
 
   rowsFoundEl.textContent = transactions.length.toLocaleString();
   netCommissionEl.textContent = formatUsd(netCommission);
   paymentRowsEl.textContent = paymentRows.toLocaleString();
   refundRowsEl.textContent = refundRows.toLocaleString();
   dateRangeEl.textContent = `Date range: ${getDateRangeText(actionDates)}`;
+
+  renderKpiComparison(
+    rowsFoundCompareEl,
+    transactions.length,
+    comparisonTransactions.length,
+    "rows",
+  );
+
+  renderKpiComparison(
+    netCommissionCompareEl,
+    currentMetrics.netCommission,
+    comparisonMetrics.netCommission,
+    "commission",
+  );
+
+  renderKpiComparison(
+    paymentRowsCompareEl,
+    currentMetrics.paymentRows,
+    comparisonMetrics.paymentRows,
+    "payments",
+  );
+
+  renderKpiComparison(
+    refundRowsCompareEl,
+    currentMetrics.refundRows,
+    comparisonMetrics.refundRows,
+    "refunds",
+  );
 
   summary.classList.remove("hidden");
   details.classList.remove("hidden");
@@ -351,13 +383,23 @@ async function refreshDashboardFromStoredData() {
     trendGrouping.value,
     hideIncompletePeriods.checked,
   );
-  renderChart(trend);
+
+  const comparisonTrend =
+    comparisonMode.value === "previous"
+      ? buildCommissionTrend(
+          comparisonTransactions,
+          trendGrouping.value,
+          hideIncompletePeriods.checked,
+        )
+      : null;
+
+  renderChart(trend, comparisonTrend);
 
   renderTable("topActivities", buildTopList(transactions, "activityName"));
   renderTable("topDestinations", buildTopList(transactions, "destination"));
   renderRefundImpactTable(buildRefundImpact(transactions));
   renderDailyReport(transactions);
-  renderMonthlySummary(transactions);
+  renderMonthlySummary(transactions, comparisonTransactions);
 }
 
 function getAllTransactionIds() {
@@ -517,32 +559,48 @@ function buildCommissionByDate(transactions) {
   };
 }
 
-function renderChart(data) {
+function renderChart(data, comparisonData = null) {
   const ctx = document.getElementById("commissionChart");
 
   if (chartInstance) {
     chartInstance.destroy();
   }
 
+  const datasets = [
+    {
+      label: "Current Period",
+      data: data.values,
+      borderColor: "#ff5b00",
+      backgroundColor: "rgba(255,91,0,0.1)",
+      tension: 0.3,
+      fill: true,
+    },
+  ];
+
+  if (comparisonData && comparisonData.values.length) {
+    datasets.push({
+      label: "Previous Period",
+      data: comparisonData.values,
+      borderColor: "#4d40ca",
+      backgroundColor: "rgba(77,64,202,0.04)",
+      borderDash: [6, 6],
+      tension: 0.3,
+      fill: false,
+    });
+  }
+
   chartInstance = new Chart(ctx, {
     type: "line",
     data: {
       labels: data.labels,
-      datasets: [
-        {
-          label: "Commission",
-          data: data.values,
-          borderColor: "#ff5b00",
-          backgroundColor: "rgba(255,91,0,0.1)",
-          tension: 0.3,
-          fill: true,
-        },
-      ],
+      datasets,
     },
     options: {
       responsive: true,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: datasets.length > 1,
+        },
       },
       scales: {
         y: {
@@ -688,10 +746,24 @@ function clearAllData() {
 }
 
 function filterTransactionsByDateRange(transactions) {
+  const selectedRange = getSelectedDateRange(transactions);
+
+  if (!selectedRange) {
+    return transactions;
+  }
+
+  return filterTransactionsByExplicitRange(
+    transactions,
+    selectedRange.startDate,
+    selectedRange.endDate,
+  );
+}
+
+function getSelectedDateRange(transactions) {
   const value = dateRangeFilter.value;
 
   if (value === "all") {
-    return transactions;
+    return null;
   }
 
   const sortedDates = transactions
@@ -700,7 +772,7 @@ function filterTransactionsByDateRange(transactions) {
     .sort((a, b) => b - a);
 
   if (!sortedDates.length) {
-    return transactions;
+    return null;
   }
 
   const latestDate = sortedDates[0];
@@ -730,7 +802,7 @@ function filterTransactionsByDateRange(transactions) {
 
   if (value === "custom") {
     if (!customStartDate.value || !customEndDate.value) {
-      return transactions;
+      return null;
     }
 
     startDate = parseKlookDate(customStartDate.value);
@@ -738,12 +810,31 @@ function filterTransactionsByDateRange(transactions) {
   }
 
   if (!startDate || !endDate) {
-    return transactions;
+    return null;
   }
 
   startDate.setHours(0, 0, 0, 0);
   endDate.setHours(23, 59, 59, 999);
 
+  const periodDays = getInclusiveDayCount(startDate, endDate);
+
+  const previousEndDate = new Date(startDate);
+  previousEndDate.setDate(previousEndDate.getDate() - 1);
+  previousEndDate.setHours(23, 59, 59, 999);
+
+  const previousStartDate = new Date(previousEndDate);
+  previousStartDate.setDate(previousStartDate.getDate() - periodDays + 1);
+  previousStartDate.setHours(0, 0, 0, 0);
+
+  return {
+    startDate,
+    endDate,
+    previousStartDate,
+    previousEndDate,
+  };
+}
+
+function filterTransactionsByExplicitRange(transactions, startDate, endDate) {
   return transactions.filter((transaction) => {
     const actionDate = parseKlookDate(transaction.actionDate);
 
@@ -753,6 +844,17 @@ function filterTransactionsByDateRange(transactions) {
 
     return actionDate >= startDate && actionDate <= endDate;
   });
+}
+
+function getInclusiveDayCount(startDate, endDate) {
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  return Math.round((end - start) / oneDayMs) + 1;
 }
 
 function buildCommissionTrend(transactions, grouping, hideIncomplete) {
@@ -1030,7 +1132,53 @@ function formatShortDate(value) {
   }).format(date);
 }
 
-function renderMonthlySummary(transactions) {
+function renderMonthlySummary(transactions, comparisonTransactions = []) {
+  const map = buildMonthlySummaryMap(transactions);
+  const comparisonMap = buildMonthlySummaryMap(comparisonTransactions);
+
+  const months = Object.entries(map)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, 6);
+
+  monthlySummaryGrid.innerHTML = "";
+
+  months.forEach(([monthKey, data]) => {
+    const [year, month] = monthKey.split("-");
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    const averageBooking =
+      data.paymentCount > 0 ? data.netCommission / data.paymentCount : 0;
+
+    const comparisonTotal = Object.values(comparisonMap).reduce(
+      (sum, item) => sum + item.netCommission,
+      0,
+    );
+
+    const comparisonHtml =
+      comparisonMode.value === "previous" && comparisonTotal !== 0
+        ? `<small class="${getComparisonClass(data.netCommission, comparisonTotal)}">
+            ${formatPercentChange(data.netCommission, comparisonTotal)} vs previous period
+          </small>`
+        : "";
+
+    const card = document.createElement("div");
+    card.className = "monthly-card";
+
+    card.innerHTML = `
+      <span>${formatMonthLabel(date)}</span>
+      <strong>${formatUsd(data.netCommission)}</strong>
+      ${comparisonHtml}
+      <small>${data.paymentCount.toLocaleString()} payment bookings</small>
+      <small>${data.refundCount.toLocaleString()} refunds (${formatUsd(data.refundCommission)})</small>
+      <small>${formatUsd(averageBooking)} net avg / booking</small>
+    `;
+
+    monthlySummaryGrid.appendChild(card);
+  });
+
+  monthlySummary.classList.toggle("hidden", months.length === 0);
+}
+
+function buildMonthlySummaryMap(transactions) {
   const map = {};
 
   transactions.forEach((transaction) => {
@@ -1072,33 +1220,27 @@ function renderMonthlySummary(transactions) {
     }
   });
 
-  const months = Object.entries(map)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, 6);
+  return map;
+}
 
-  monthlySummaryGrid.innerHTML = "";
+function formatPercentChange(currentValue, previousValue) {
+  if (previousValue === 0) {
+    return "No previous data";
+  }
 
-  months.forEach(([monthKey, data]) => {
-    const [year, month] = monthKey.split("-");
-    const date = new Date(Number(year), Number(month) - 1, 1);
-    const averageBooking =
-      data.paymentCount > 0 ? data.netCommission / data.paymentCount : 0;
+  const percent =
+    ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+  const sign = percent >= 0 ? "+" : "";
 
-    const card = document.createElement("div");
-    card.className = "monthly-card";
+  return `${sign}${percent.toFixed(1)}%`;
+}
 
-    card.innerHTML = `
-      <span>${formatMonthLabel(date)}</span>
-      <strong>${formatUsd(data.netCommission)}</strong>
-      <small>${data.paymentCount.toLocaleString()} payment bookings</small>
-      <small>${data.refundCount.toLocaleString()} refunds (${formatUsd(data.refundCommission)})</small>
-      <small>${formatUsd(averageBooking)} net avg / booking</small>
-    `;
+function getComparisonClass(currentValue, previousValue) {
+  if (currentValue >= previousValue) {
+    return "comparison-positive";
+  }
 
-    monthlySummaryGrid.appendChild(card);
-  });
-
-  monthlySummary.classList.toggle("hidden", months.length === 0);
+  return "comparison-negative";
 }
 
 function formatMonthLabel(date) {
@@ -1106,4 +1248,62 @@ function formatMonthLabel(date) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function calculateMetrics(transactions) {
+  const metrics = {
+    netCommission: 0,
+    paymentRows: 0,
+    refundRows: 0,
+    actionDates: [],
+  };
+
+  transactions.forEach((row) => {
+    metrics.netCommission += row.commissionAmountUsd;
+
+    if (row.actionType === "Payment") {
+      metrics.paymentRows += 1;
+    }
+
+    if (row.actionType === "Refund") {
+      metrics.refundRows += 1;
+    }
+
+    if (row.actionDate) {
+      metrics.actionDates.push(row.actionDate);
+    }
+  });
+
+  return metrics;
+}
+
+function renderKpiComparison(element, currentValue, previousValue, label) {
+  if (comparisonMode.value === "off" || previousValue === 0) {
+    element.textContent = "";
+    element.className = "comparison-note";
+    return;
+  }
+
+  const percent =
+    ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+  const sign = percent >= 0 ? "+" : "";
+
+  element.textContent = `${sign}${percent.toFixed(1)}% vs previous period`;
+  element.className = `comparison-note ${getComparisonDirectionClass(
+    currentValue,
+    previousValue,
+    label,
+  )}`;
+}
+
+function getComparisonDirectionClass(currentValue, previousValue, label) {
+  if (label === "refunds") {
+    return currentValue <= previousValue
+      ? "comparison-positive"
+      : "comparison-negative";
+  }
+
+  return currentValue >= previousValue
+    ? "comparison-positive"
+    : "comparison-negative";
 }
