@@ -17,8 +17,13 @@ When releasing:
 
 ## Unreleased
 
+- no unreleased changes yet
+
+## v2.0.1
+
 - added a `Top Activity Categories` section with a doughnut chart, breakdown table, and commission/bookings toggle
 - made the refund impact table scrollable with a sticky header
+- refined dashboard layout styling, including the top import area and category table alignment
 
 ## v2.0.0
 

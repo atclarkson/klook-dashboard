@@ -2,7 +2,7 @@ const DB_NAME = "klookCommissionDashboard";
 const DB_VERSION = 1;
 // Bump APP_VERSION for user-facing releases.
 // Bump DATA_SCHEMA_VERSION only when stored IndexedDB data becomes incompatible.
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.0.1";
 const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
