@@ -28,7 +28,7 @@ body.modal-open {
 }
 
 .app {
-  max-width: 1180px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 48px 32px 64px;
 }
@@ -130,6 +130,57 @@ button.danger:hover {
 
 .import-section {
   margin-top: 18px;
+}
+
+.import-guide {
+  margin-top: 22px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.import-guide h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+}
+
+.import-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.import-guide-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #dbe5f0;
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.import-guide-card h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.import-guide-card p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.import-guide-card p:last-child {
+  margin-bottom: 0;
+}
+
+.import-guide-card a {
+  color: var(--klook-orange);
+  text-decoration: none;
+}
+
+.import-guide-card a:hover {
+  text-decoration: underline;
 }
 
 .drop-zone {
@@ -384,6 +435,10 @@ button.danger:hover {
   }
 
   .intro-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .import-guide-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -943,7 +998,7 @@ td {
 }
 
 #unpaidBookingsTable {
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 #unpaidBookingsTable th,
@@ -959,14 +1014,31 @@ td {
   z-index: 1;
 }
 
+#unpaidBookingsTable th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+
+#unpaidBookingsTable th[data-sort]:hover {
+  color: var(--text-main);
+}
+
 #unpaidBookingsTable tr:last-child td {
   border-bottom: none;
 }
 
-#unpaidBookingsTable td:nth-child(3),
-#unpaidBookingsTable td:nth-child(6) {
+#unpaidBookingsTable td:nth-child(4),
+#unpaidBookingsTable td:nth-child(7) {
   text-align: right;
   white-space: nowrap;
+}
+
+#unpaidBookingsTable th:nth-child(2),
+#unpaidBookingsTable th:nth-child(3),
+#unpaidBookingsTable td:nth-child(2),
+#unpaidBookingsTable td:nth-child(3) {
+  white-space: nowrap;
+  min-width: 92px;
 }
 
 .section-heading {

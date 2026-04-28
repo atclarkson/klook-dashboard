@@ -17,6 +17,15 @@ When releasing:
 
 ## Unreleased
 
+## v2.1.1
+
+- added import-tab guidance for transaction exports, overlap-safe reimports, and required monthly billing-report imports for payout tracking
+- added sortable columns to the `Unpaid Bookings` table in the `Payouts` tab
+- added `Participation Date` to the `Unpaid Bookings` table and widened the dashboard layout for more working space
+- updated compact table date formatting to include a two-digit year for clarity
+- refined compact date formatting to `Apr 28 '26` and widened unpaid-table date columns to prevent wrapping
+- changed compact table dates to the `23Apr2026` format
+
 ## v2.1.0
 
 - started billing report support with CSV type detection, billing-row import, and IndexedDB storage

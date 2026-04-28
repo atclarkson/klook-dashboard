@@ -2,7 +2,7 @@ const DB_NAME = "klookCommissionDashboard";
 const DB_VERSION = 2;
 // Bump APP_VERSION for user-facing releases.
 // Bump DATA_SCHEMA_VERSION only when stored IndexedDB data becomes incompatible.
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.1.1";
 const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
@@ -15,6 +15,10 @@ let selectedPayoutMetric = "commission";
 let activeDashboardView = "overview";
 let refundImpactSort = {
   field: "payment",
+  direction: "desc",
+};
+let unpaidBookingsSort = {
+  field: "ageDays",
   direction: "desc",
 };
 
@@ -226,6 +230,31 @@ document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
     refreshDashboardFromStoredData();
   });
 });
+
+document
+  .querySelectorAll("#unpaidBookingsTable th[data-sort]")
+  .forEach((header) => {
+    header.addEventListener("click", () => {
+      const field = header.dataset.sort;
+
+      if (unpaidBookingsSort.field === field) {
+        unpaidBookingsSort.direction =
+          unpaidBookingsSort.direction === "asc" ? "desc" : "asc";
+      } else {
+        unpaidBookingsSort.field = field;
+        unpaidBookingsSort.direction =
+          field === "bookingNumber" ||
+          field === "activityName" ||
+          field === "destination" ||
+          field === "payScheme" ||
+          field === "status"
+            ? "asc"
+            : "desc";
+      }
+
+      refreshDashboardFromStoredData();
+    });
+  });
 
 comparisonMode.addEventListener("change", refreshDashboardFromStoredData);
 unpaidAgeFilter.addEventListener("change", refreshDashboardFromStoredData);
@@ -1499,6 +1528,7 @@ function buildBookingPayoutSummaries(transactions) {
         bookingNumber: String(transaction.bookingNumber || "").trim(),
         orderId: String(transaction.orderId || "").trim(),
         bookedDate: "",
+        participationDate: "",
         activityName: transaction.activityName || "Unknown",
         destination: transaction.destination || "Unknown",
         paymentCount: 0,
@@ -1517,6 +1547,14 @@ function buildBookingPayoutSummaries(transactions) {
 
     if (transaction.destination) {
       booking.destination = transaction.destination;
+    }
+
+    if (
+      transaction.participationDate &&
+      (!booking.participationDate ||
+        transaction.participationDate < booking.participationDate)
+    ) {
+      booking.participationDate = transaction.participationDate;
     }
 
     booking.netCommissionUsd += transaction.commissionAmountUsd;
@@ -1585,6 +1623,7 @@ function buildPayoutViewData(transactions, payoutStatus) {
         bookingNumber:
           booking.bookingNumber || booking.ticketId || booking.orderId || "-",
         bookedDate: booking.bookedDate,
+        participationDate: booking.participationDate,
         ageDays,
         activityName: booking.activityName || "Unknown",
         destination: booking.destination || "Unknown",
@@ -1609,19 +1648,47 @@ function buildPayoutViewData(transactions, payoutStatus) {
 }
 
 function filterUnpaidRowsByAge(rows, ageFilter) {
+  const sortRows = (items) => sortUnpaidRows(items);
+
   if (ageFilter === "all") {
-    return rows.sort((a, b) => b.ageDays - a.ageDays);
+    return sortRows(rows);
   }
 
   const threshold = Number(ageFilter);
 
   if (!Number.isFinite(threshold)) {
-    return rows.sort((a, b) => b.ageDays - a.ageDays);
+    return sortRows(rows);
   }
 
-  return rows
-    .filter((row) => row.ageDays > threshold)
-    .sort((a, b) => b.ageDays - a.ageDays);
+  return sortRows(rows.filter((row) => row.ageDays > threshold));
+}
+
+function sortUnpaidRows(rows) {
+  const { field, direction } = unpaidBookingsSort;
+  const multiplier = direction === "asc" ? 1 : -1;
+
+  return [...rows].sort((left, right) => {
+    if (field === "bookedDate" || field === "participationDate") {
+      const leftTime = parseKlookDate(left.bookedDate)?.getTime() || 0;
+      const rightTime = parseKlookDate(right.bookedDate)?.getTime() || 0;
+      if (field === "participationDate") {
+        const leftParticipationTime =
+          parseKlookDate(left.participationDate)?.getTime() || 0;
+        const rightParticipationTime =
+          parseKlookDate(right.participationDate)?.getTime() || 0;
+        return (leftParticipationTime - rightParticipationTime) * multiplier;
+      }
+      return (leftTime - rightTime) * multiplier;
+    }
+
+    if (field === "ageDays" || field === "commissionAmountUsd") {
+      return (left[field] - right[field]) * multiplier;
+    }
+
+    const leftValue = String(left[field] || "").toLowerCase();
+    const rightValue = String(right[field] || "").toLowerCase();
+    return leftValue.localeCompare(rightValue) * multiplier;
+  });
 }
 
 function renderPayouts(data, imports) {
@@ -1671,7 +1738,7 @@ function renderUnpaidBookingsTable(rows) {
 
   if (!rows.length) {
     tbody.innerHTML =
-      '<tr><td colspan="8" class="empty-row">No unpaid bookings in this filter.</td></tr>';
+      '<tr><td colspan="9" class="empty-row">No unpaid bookings in this filter.</td></tr>';
     return;
   }
 
@@ -1680,6 +1747,7 @@ function renderUnpaidBookingsTable(rows) {
     tr.innerHTML = `
       <td>${row.bookingNumber}</td>
       <td>${row.bookedDate ? formatShortDate(row.bookedDate) : "-"}</td>
+      <td>${row.participationDate ? formatShortDate(row.participationDate) : "-"}</td>
       <td>${row.ageDays.toLocaleString()}d</td>
       <td>${row.activityName}</td>
       <td>${row.destination}</td>
@@ -2448,10 +2516,13 @@ function formatShortDate(value) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
+  const month = new Intl.DateTimeFormat("en-US", {
     month: "short",
-    day: "numeric",
   }).format(date);
+  const day = date.getDate();
+  const year = date.getFullYear();
+
+  return `${day}${month}${year}`;
 }
 
 function renderMonthlySummary(transactions, comparisonTransactions = []) {

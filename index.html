@@ -94,7 +94,13 @@
         </div>
       </header>
 
-      <div id="aboutModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div
+        id="aboutModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="aboutTitle"
+      >
         <div class="modal-backdrop" data-close-modal="true"></div>
         <div class="modal-panel">
           <div class="modal-header">
@@ -102,7 +108,12 @@
               <h2 id="aboutTitle">About This Dashboard</h2>
               <p>What it is, what it is not, and how your data is handled.</p>
             </div>
-            <button id="closeAboutBtn" type="button" class="modal-close" aria-label="Close about dialog">
+            <button
+              id="closeAboutBtn"
+              type="button"
+              class="modal-close"
+              aria-label="Close about dialog"
+            >
               Close
             </button>
           </div>
@@ -123,10 +134,10 @@
             <section>
               <h3>What This Is</h3>
               <p>
-                This is an unofficial local dashboard made by affiliates who were
-                tired of the Klook Kreator dashboard experience and wanted better
-                visibility into commission, refunds, destinations, and audience
-                signals.
+                This is an unofficial local dashboard made by affiliates who
+                were tired of the Klook Kreator dashboard experience and wanted
+                better visibility into commission, refunds, destinations, and
+                audience signals.
               </p>
             </section>
 
@@ -160,9 +171,16 @@
                 CDNs so the app can run in the browser:
               </p>
               <ul>
-                <li><code>cdn.jsdelivr.net</code> for Papa Parse, used to read CSV files in the browser.</li>
-                <li><code>cdn.jsdelivr.net</code> for Chart.js, used for charts.</li>
-                <li><code>cdn.plot.ly</code> for Plotly, used for the country map.</li>
+                <li>
+                  <code>cdn.jsdelivr.net</code> for Papa Parse, used to read CSV
+                  files in the browser.
+                </li>
+                <li>
+                  <code>cdn.jsdelivr.net</code> for Chart.js, used for charts.
+                </li>
+                <li>
+                  <code>cdn.plot.ly</code> for Plotly, used for the country map.
+                </li>
               </ul>
               <p>
                 Those requests fetch library files only. The dashboard code does
@@ -247,6 +265,46 @@
             <p id="billingStatus"></p>
           </section>
         </div>
+
+        <section class="import-guide">
+          <h2>Import Guide</h2>
+          <div class="import-guide-grid">
+            <article class="import-guide-card">
+              <h3>Main Booking Data</h3>
+              <p>
+                Download the main ticket performance CSVs in 6-month chunks from
+                <a
+                  href="https://affiliate.klook.com/performance/ticket_list"
+                  target="_blank"
+                  rel="noreferrer"
+                  >affiliate.klook.com/performance/ticket_list</a
+                >.
+              </p>
+              <p>
+                Do not worry about overlapping days between exports. The
+                dashboard de-duplicates imports automatically.
+              </p>
+            </article>
+
+            <article class="import-guide-card">
+              <h3>Billing / Payout Data</h3>
+              <p>
+                If you want payout tracking to work, download every monthly
+                billing report CSV from
+                <a
+                  href="https://affiliate.klook.com/performance/ticket_status_list"
+                  target="_blank"
+                  rel="noreferrer"
+                  >affiliate.klook.com/performance/ticket_status_list</a
+                >.
+              </p>
+              <p>
+                Import each month so the dashboard can classify bookings as paid
+                out or still outstanding.
+              </p>
+            </article>
+          </div>
+        </section>
 
         <section id="compatibilityNotice" class="compatibility-notice hidden">
           <h2>Data Re-Import Required</h2>
@@ -517,13 +575,17 @@
           <div class="demographic-card">
             <span class="label">Promo Code Bookings</span>
             <strong id="promoBookingShareValue">0%</strong>
-            <small id="promoBookingShareMeta">Bookings using a creator code</small>
+            <small id="promoBookingShareMeta"
+              >Bookings using a creator code</small
+            >
           </div>
 
           <div class="demographic-card">
             <span class="label">Code-Based Share</span>
             <strong id="codeBasedShareValue">0%</strong>
-            <small id="codeBasedShareMeta">Bookings tracked as code-based</small>
+            <small id="codeBasedShareMeta"
+              >Bookings tracked as code-based</small
+            >
           </div>
         </div>
 
@@ -661,11 +723,7 @@
             </p>
           </div>
 
-          <div
-            class="metric-toggle"
-            role="tablist"
-            aria-label="Payout metric"
-          >
+          <div class="metric-toggle" role="tablist" aria-label="Payout metric">
             <button
               id="payoutMetricBookings"
               class="metric-toggle-btn"
@@ -687,7 +745,9 @@
 
         <div class="payout-kpis">
           <div class="demographic-card">
-            <span id="payoutTotalLabel" class="label">Total Net Commission</span>
+            <span id="payoutTotalLabel" class="label"
+              >Total Net Commission</span
+            >
             <strong id="payoutTotalBookings">0</strong>
             <small id="payoutTotalMeta">Imported payment bookings</small>
           </div>
@@ -699,7 +759,9 @@
           <div class="demographic-card">
             <span id="payoutUnpaidLabel" class="label">Unpaid</span>
             <strong id="payoutUnpaidBookings">0</strong>
-            <small id="payoutUnpaidMeta">Not yet matched to any billing row</small>
+            <small id="payoutUnpaidMeta"
+              >Not yet matched to any billing row</small
+            >
           </div>
           <div class="demographic-card">
             <span id="payoutAdjustedLabel" class="label">Adjusted</span>
@@ -726,14 +788,15 @@
             <table id="unpaidBookingsTable">
               <thead>
                 <tr>
-                  <th>Booking</th>
-                  <th>Booked</th>
-                  <th>Age</th>
-                  <th>Activity</th>
-                  <th>Destination</th>
-                  <th>Commission</th>
-                  <th>Pay Scheme</th>
-                  <th>Status</th>
+                  <th data-sort="bookingNumber">Booking</th>
+                  <th data-sort="bookedDate">Booked</th>
+                  <th data-sort="participationDate">Participation</th>
+                  <th data-sort="ageDays">Age</th>
+                  <th data-sort="activityName">Activity</th>
+                  <th data-sort="destination">Destination</th>
+                  <th data-sort="commissionAmountUsd">Commission</th>
+                  <th data-sort="payScheme">Pay Scheme</th>
+                  <th data-sort="status">Status</th>
                 </tr>
               </thead>
               <tbody></tbody>
