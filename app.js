@@ -3,6 +3,7 @@ const DB_VERSION = 1;
 
 let db = null;
 let chartInstance = null;
+let selectedTrendMetric = "netCommission";
 let refundImpactSort = {
   field: "payment",
   direction: "desc",
@@ -15,9 +16,11 @@ const fileInput = document.getElementById("fileInput");
 const summary = document.getElementById("summary");
 const details = document.getElementById("details");
 
-const rowsFoundEl = document.getElementById("rowsFound");
 const netCommissionEl = document.getElementById("netCommission");
 const paymentRowsEl = document.getElementById("paymentRows");
+const avgCommissionPerBookingEl = document.getElementById(
+  "avgCommissionPerBooking",
+);
 const refundRowsEl = document.getElementById("refundRows");
 const fileNameEl = document.getElementById("fileName");
 const dateRangeEl = document.getElementById("dateRange");
@@ -30,7 +33,6 @@ const backupInput = document.getElementById("backupInput");
 const filters = document.getElementById("filters");
 const dateRangeFilter = document.getElementById("dateRangeFilter");
 const trendGrouping = document.getElementById("trendGrouping");
-const hideIncompletePeriods = document.getElementById("hideIncompletePeriods");
 const customDateFields = document.getElementById("customDateFields");
 const customStartDate = document.getElementById("customStartDate");
 const customEndDate = document.getElementById("customEndDate");
@@ -46,10 +48,14 @@ const monthlySummary = document.getElementById("monthlySummary");
 const monthlySummaryGrid = document.getElementById("monthlySummaryGrid");
 
 const comparisonMode = document.getElementById("comparisonMode");
-const rowsFoundCompareEl = document.getElementById("rowsFoundCompare");
 const netCommissionCompareEl = document.getElementById("netCommissionCompare");
 const paymentRowsCompareEl = document.getElementById("paymentRowsCompare");
+const avgCommissionPerBookingCompareEl = document.getElementById(
+  "avgCommissionPerBookingCompare",
+);
 const refundRowsCompareEl = document.getElementById("refundRowsCompare");
+const trendChartTitle = document.getElementById("trendChartTitle");
+const kpiCards = document.querySelectorAll(".kpi-card");
 
 initApp();
 
@@ -130,10 +136,6 @@ dateRangeFilter.addEventListener("change", () => {
 customStartDate.addEventListener("change", refreshDashboardFromStoredData);
 customEndDate.addEventListener("change", refreshDashboardFromStoredData);
 trendGrouping.addEventListener("change", refreshDashboardFromStoredData);
-hideIncompletePeriods.addEventListener(
-  "change",
-  refreshDashboardFromStoredData,
-);
 
 document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
   header.addEventListener("click", () => {
@@ -152,6 +154,30 @@ document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
 });
 
 comparisonMode.addEventListener("change", refreshDashboardFromStoredData);
+
+kpiCards.forEach((card) => {
+  const activateCard = () => {
+    const { metric } = card.dataset;
+
+    if (!metric || selectedTrendMetric === metric) {
+      return;
+    }
+
+    selectedTrendMetric = metric;
+    syncActiveKpiCard();
+    refreshDashboardFromStoredData();
+  };
+
+  card.addEventListener("click", activateCard);
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    activateCard();
+  });
+});
 
 // Core Functions
 function openDatabase() {
@@ -333,21 +359,15 @@ async function refreshDashboardFromStoredData() {
 
   const netCommission = currentMetrics.netCommission;
   const paymentRows = currentMetrics.paymentRows;
+  const avgCommissionPerBooking = currentMetrics.avgCommissionPerBooking;
   const refundRows = currentMetrics.refundRows;
   const actionDates = currentMetrics.actionDates;
 
-  rowsFoundEl.textContent = transactions.length.toLocaleString();
   netCommissionEl.textContent = formatUsd(netCommission);
   paymentRowsEl.textContent = paymentRows.toLocaleString();
+  avgCommissionPerBookingEl.textContent = formatUsd(avgCommissionPerBooking);
   refundRowsEl.textContent = refundRows.toLocaleString();
   dateRangeEl.textContent = `Date range: ${getDateRangeText(actionDates)}`;
-
-  renderKpiComparison(
-    rowsFoundCompareEl,
-    transactions.length,
-    comparisonTransactions.length,
-    "rows",
-  );
 
   renderKpiComparison(
     netCommissionCompareEl,
@@ -360,7 +380,14 @@ async function refreshDashboardFromStoredData() {
     paymentRowsCompareEl,
     currentMetrics.paymentRows,
     comparisonMetrics.paymentRows,
-    "payments",
+    "bookings",
+  );
+
+  renderKpiComparison(
+    avgCommissionPerBookingCompareEl,
+    currentMetrics.avgCommissionPerBooking,
+    comparisonMetrics.avgCommissionPerBooking,
+    "avgCommissionPerBooking",
   );
 
   renderKpiComparison(
@@ -378,22 +405,24 @@ async function refreshDashboardFromStoredData() {
     fileNameEl.textContent = "Stored dashboard data loaded.";
   }
 
-  const trend = buildCommissionTrend(
+  const trendConfig = getTrendMetricConfig(selectedTrendMetric);
+  const trend = buildMetricTrend(
     transactions,
     trendGrouping.value,
-    hideIncompletePeriods.checked,
+    trendConfig,
   );
 
   const comparisonTrend =
     comparisonMode.value === "previous"
-      ? buildCommissionTrend(
+      ? buildMetricTrend(
           comparisonTransactions,
           trendGrouping.value,
-          hideIncompletePeriods.checked,
+          trendConfig,
         )
       : null;
 
-  renderChart(trend, comparisonTrend);
+  syncActiveKpiCard();
+  renderChart(trend, comparisonTrend, trendConfig);
 
   renderTable("topActivities", buildTopList(transactions, "activityName"));
   renderTable("topDestinations", buildTopList(transactions, "destination"));
@@ -559,8 +588,9 @@ function buildCommissionByDate(transactions) {
   };
 }
 
-function renderChart(data, comparisonData = null) {
+function renderChart(data, comparisonData = null, trendConfig) {
   const ctx = document.getElementById("commissionChart");
+  trendChartTitle.textContent = `${trendConfig.label} Trend`;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -570,8 +600,8 @@ function renderChart(data, comparisonData = null) {
     {
       label: "Current Period",
       data: data.values,
-      borderColor: "#ff5b00",
-      backgroundColor: "rgba(255,91,0,0.1)",
+      borderColor: trendConfig.borderColor,
+      backgroundColor: trendConfig.backgroundColor,
       tension: 0.3,
       fill: true,
     },
@@ -601,14 +631,24 @@ function renderChart(data, comparisonData = null) {
         legend: {
           display: datasets.length > 1,
         },
+        tooltip: {
+          callbacks: {
+            label: (context) =>
+              `${context.dataset.label}: ${trendConfig.formatValue(context.parsed.y)}`,
+          },
+        },
       },
       scales: {
         y: {
           beginAtZero: true,
           ticks: {
-            callback: (value) => "$" + value,
+            callback: (value) => trendConfig.formatValue(value),
           },
         },
+      },
+      interaction: {
+        intersect: false,
+        mode: "index",
       },
     },
   });
@@ -857,7 +897,7 @@ function getInclusiveDayCount(startDate, endDate) {
   return Math.round((end - start) / oneDayMs) + 1;
 }
 
-function buildCommissionTrend(transactions, grouping, hideIncomplete) {
+function buildMetricTrend(transactions, grouping, trendConfig) {
   const map = {};
   const allDates = transactions
     .map((transaction) => parseKlookDate(transaction.actionDate))
@@ -887,36 +927,115 @@ function buildCommissionTrend(transactions, grouping, hideIncomplete) {
 
     const trendItem = getTrendItem(date, grouping);
 
-    if (
-      hideIncomplete &&
-      isIncompletePeriod(
-        trendItem.startDate,
-        trendItem.endDate,
-        minDate,
-        maxDate,
-      )
-    ) {
-      return;
-    }
-
     if (!map[trendItem.sortKey]) {
       map[trendItem.sortKey] = {
         label: trendItem.label,
-        value: 0,
+        startDate: trendItem.startDate,
+        endDate: trendItem.endDate,
+        aggregate: trendConfig.createAggregate(),
       };
     }
 
-    map[trendItem.sortKey].value += transaction.commissionAmountUsd;
+    trendConfig.accumulate(map[trendItem.sortKey].aggregate, transaction);
   });
 
   const sortedItems = Object.entries(map)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, item]) => item);
 
+  const visibleItems = getVisibleTrendItems(
+    sortedItems,
+    grouping,
+    minDate,
+    maxDate,
+  );
+
   return {
-    labels: sortedItems.map((item) => item.label),
-    values: sortedItems.map((item) => item.value),
+    labels: visibleItems.map((item) => item.label),
+    values: visibleItems.map((item) => trendConfig.finalize(item.aggregate)),
   };
+}
+
+function getVisibleTrendItems(items, grouping, minDate, maxDate) {
+  if (grouping === "daily") {
+    return items;
+  }
+
+  const completeItems = items.filter(
+    (item) =>
+      !isIncompletePeriod(item.startDate, item.endDate, minDate, maxDate),
+  );
+
+  return completeItems.length > 0 ? completeItems : items;
+}
+
+function getTrendMetricConfig(metric) {
+  const metricConfig = {
+    netCommission: {
+      label: "Net Commission",
+      borderColor: "#ff5b00",
+      backgroundColor: "rgba(255,91,0,0.1)",
+      createAggregate: () => ({ total: 0 }),
+      accumulate: (aggregate, transaction) => {
+        aggregate.total += transaction.commissionAmountUsd;
+      },
+      finalize: (aggregate) => aggregate.total,
+      formatValue: (value) => formatUsd(value),
+    },
+    bookings: {
+      label: "Bookings",
+      borderColor: "#00cbd0",
+      backgroundColor: "rgba(0,203,208,0.1)",
+      createAggregate: () => ({ count: 0 }),
+      accumulate: (aggregate, transaction) => {
+        if (transaction.actionType === "Payment") {
+          aggregate.count += 1;
+        }
+      },
+      finalize: (aggregate) => aggregate.count,
+      formatValue: (value) => Number(value).toLocaleString(),
+    },
+    avgCommissionPerBooking: {
+      label: "Avg Commission / Booking",
+      borderColor: "#4d40ca",
+      backgroundColor: "rgba(77,64,202,0.08)",
+      createAggregate: () => ({ commission: 0, bookings: 0 }),
+      accumulate: (aggregate, transaction) => {
+        if (transaction.actionType === "Payment") {
+          aggregate.commission += transaction.commissionAmountUsd;
+          aggregate.bookings += 1;
+        }
+      },
+      finalize: (aggregate) =>
+        aggregate.bookings > 0
+          ? aggregate.commission / aggregate.bookings
+          : 0,
+      formatValue: (value) => formatUsd(value),
+    },
+    refunds: {
+      label: "Refunds",
+      borderColor: "#f59e0b",
+      backgroundColor: "rgba(245,158,11,0.12)",
+      createAggregate: () => ({ count: 0 }),
+      accumulate: (aggregate, transaction) => {
+        if (transaction.actionType === "Refund") {
+          aggregate.count += 1;
+        }
+      },
+      finalize: (aggregate) => aggregate.count,
+      formatValue: (value) => Number(value).toLocaleString(),
+    },
+  };
+
+  return metricConfig[metric] || metricConfig.netCommission;
+}
+
+function syncActiveKpiCard() {
+  kpiCards.forEach((card) => {
+    const isActive = card.dataset.metric === selectedTrendMetric;
+    card.classList.toggle("active", isActive);
+    card.setAttribute("aria-pressed", String(isActive));
+  });
 }
 
 function getTrendItem(date, grouping) {
@@ -1255,6 +1374,7 @@ function calculateMetrics(transactions) {
     netCommission: 0,
     paymentRows: 0,
     refundRows: 0,
+    avgCommissionPerBooking: 0,
     actionDates: [],
   };
 
@@ -1273,6 +1393,9 @@ function calculateMetrics(transactions) {
       metrics.actionDates.push(row.actionDate);
     }
   });
+
+  metrics.avgCommissionPerBooking =
+    metrics.paymentRows > 0 ? metrics.netCommission / metrics.paymentRows : 0;
 
   return metrics;
 }

@@ -132,7 +132,7 @@
       </section>
 
       <section id="filters" class="filters hidden">
-        <div>
+        <div class="filter-field">
           <label for="dateRangeFilter">Date Range</label>
           <select id="dateRangeFilter">
             <option value="all">All Time</option>
@@ -146,18 +146,18 @@
         </div>
 
         <div id="customDateFields" class="custom-date-fields hidden">
-          <div>
+          <div class="filter-field">
             <label for="customStartDate">Start Date</label>
             <input id="customStartDate" type="date" />
           </div>
 
-          <div>
+          <div class="filter-field">
             <label for="customEndDate">End Date</label>
             <input id="customEndDate" type="date" />
           </div>
         </div>
 
-        <div>
+        <div class="filter-field">
           <label for="trendGrouping">Trend Grouping</label>
           <select id="trendGrouping">
             <option value="daily">Daily</option>
@@ -165,42 +165,59 @@
             <option value="monthly">Monthly</option>
           </select>
         </div>
-        <div>
+
+        <div class="filter-field">
           <label for="comparisonMode">Compare</label>
           <select id="comparisonMode">
             <option value="off">Off</option>
             <option value="previous">Previous Period</option>
           </select>
         </div>
-
-        <div class="checkbox-filter">
-          <label>
-            <input id="hideIncompletePeriods" type="checkbox" checked />
-            Hide incomplete periods
-          </label>
-        </div>
       </section>
-
+      <!-- KPI Cards -->
       <section id="summary" class="summary hidden">
-        <div class="card">
-          <span class="label">Rows Found</span>
-          <strong id="rowsFound">0</strong>
-          <small id="rowsFoundCompare" class="comparison-note"></small>
-        </div>
-
-        <div class="card">
+        <div
+          class="card kpi-card active"
+          data-metric="netCommission"
+          role="button"
+          tabindex="0"
+        >
           <span class="label">Net Commission</span>
           <strong id="netCommission">$0.00</strong>
           <small id="netCommissionCompare" class="comparison-note"></small>
         </div>
 
-        <div class="card">
-          <span class="label">Payments</span>
+        <div
+          class="card kpi-card"
+          data-metric="bookings"
+          role="button"
+          tabindex="0"
+        >
+          <span class="label">Bookings</span>
           <strong id="paymentRows">0</strong>
           <small id="paymentRowsCompare" class="comparison-note"></small>
         </div>
 
-        <div class="card">
+        <div
+          class="card kpi-card"
+          data-metric="avgCommissionPerBooking"
+          role="button"
+          tabindex="0"
+        >
+          <span class="label">Avg Commission / Booking</span>
+          <strong id="avgCommissionPerBooking">$0.00</strong>
+          <small
+            id="avgCommissionPerBookingCompare"
+            class="comparison-note"
+          ></small>
+        </div>
+
+        <div
+          class="card kpi-card"
+          data-metric="refunds"
+          role="button"
+          tabindex="0"
+        >
           <span class="label">Refunds</span>
           <strong id="refundRows">0</strong>
           <small id="refundRowsCompare" class="comparison-note"></small>
@@ -209,7 +226,7 @@
 
       <section class="analytics">
         <div class="chart-card">
-          <h2>Commission Trend</h2>
+          <h2 id="trendChartTitle">Net Commission Trend</h2>
           <canvas id="commissionChart"></canvas>
         </div>
 
