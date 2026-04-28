@@ -1,5 +1,6 @@
 const DB_NAME = "klookCommissionDashboard";
 const DB_VERSION = 1;
+const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
 let chartInstance = null;
@@ -15,6 +16,9 @@ const fileInput = document.getElementById("fileInput");
 
 const summary = document.getElementById("summary");
 const details = document.getElementById("details");
+const compatibilityNotice = document.getElementById("compatibilityNotice");
+const compatibilityMessage = document.getElementById("compatibilityMessage");
+const analyticsSection = document.querySelector(".analytics");
 
 const netCommissionEl = document.getElementById("netCommission");
 const paymentRowsEl = document.getElementById("paymentRows");
@@ -46,6 +50,12 @@ const dailyReportTable = document.querySelector("#dailyReportTable tbody");
 
 const monthlySummary = document.getElementById("monthlySummary");
 const monthlySummaryGrid = document.getElementById("monthlySummaryGrid");
+const demographicsSection = document.getElementById("demographics");
+const countryReachValue = document.getElementById("countryReachValue");
+const topCountryValue = document.getElementById("topCountryValue");
+const topCountryMeta = document.getElementById("topCountryMeta");
+const promoBookingShareValue = document.getElementById("promoBookingShareValue");
+const codeBasedShareValue = document.getElementById("codeBasedShareValue");
 
 const comparisonMode = document.getElementById("comparisonMode");
 const netCommissionCompareEl = document.getElementById("netCommissionCompare");
@@ -218,6 +228,14 @@ function parseCsvFile(file) {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
+          const storedTransactions = await getAllTransactions();
+
+          if (hasIncompatibleStoredData(storedTransactions)) {
+            throw new Error(
+              "Stored data is from an older dashboard version. Clear data and re-import all CSV files before adding new data.",
+            );
+          }
+
           await importRows(file.name, results.data);
           await refreshDashboardFromStoredData();
           resolve();
@@ -314,6 +332,7 @@ function normalizeRow(fileName, row) {
   ]);
 
   return {
+    schemaVersion: DATA_SCHEMA_VERSION,
     id,
     sourceFileName: fileName,
     importedAt: new Date().toISOString(),
@@ -325,12 +344,35 @@ function normalizeRow(fileName, row) {
     ticketId,
     bookingNumber,
 
+    actionTime: getField(row, ["Action Time"]),
+    participationDate: formatIsoDate(
+      parseKlookDate(getField(row, ["Participation Date"])),
+    ),
+    participationTime: getField(row, ["Participation Time"]),
+    participants: getField(row, ["Participants"]),
+    salesAmount: parseMoney(getField(row, ["Sales Amount"])),
+    salesCurrency: parseCurrencyCode(getField(row, ["Sales Amount"])),
+    commissionRate: getField(row, ["Commission Rate"]),
+
+    trackingBase: getField(row, ["Tracking base", "Tracking Base"]),
+    aid: getField(row, ["AID"]),
+    adid: getField(row, ["ADID"]),
+    adTagging: getField(row, ["AD Tagging"]),
+    websiteName: getField(row, ["Website Name(English)"]),
+    partnerParams: getField(row, ["Partner Params"]),
+    activityId: getField(row, ["Activity ID"]),
     activityName: getField(row, ["Activity Name"]),
     destination: getField(row, ["Destination"]),
+    packageName: getField(row, ["Package Name"]),
+    activityCategory: getField(row, ["Activity Category"]),
     platform: getField(row, ["Platform"]),
-    userCountry: getField(row, ["User Country"]),
-    promoCode: getField(row, ["Promo Code"]),
-    trackingBase: getField(row, ["Tracking Base"]),
+    userCountry: getField(row, ["User country", "User Country"]),
+    promoCodeType: getField(row, ["Promo Code Type"]),
+    kreatorPromoCode: getField(row, ["Kreator Promo Code", "Promo Code"]),
+    supplyCategory01: getField(row, ["Supply Category 01"]),
+    supplyCategory02: getField(row, ["Supply Category 02"]),
+    supplyCategory03: getField(row, ["Supply Category 03"]),
+    productType: getField(row, ["Product Type"]),
 
     commissionAmountUsd,
     raw: row,
@@ -339,6 +381,20 @@ function normalizeRow(fileName, row) {
 
 async function refreshDashboardFromStoredData() {
   const allTransactions = await getAllTransactions();
+
+  if (!allTransactions.length) {
+    hideCompatibilityNotice();
+    hideDashboardSections();
+    return;
+  }
+
+  if (hasIncompatibleStoredData(allTransactions)) {
+    showCompatibilityNotice();
+    hideDashboardSections();
+    return;
+  }
+
+  hideCompatibilityNotice();
   const selectedRange = getSelectedDateRange(allTransactions);
   const transactions = filterTransactionsByDateRange(allTransactions);
   const comparisonTransactions =
@@ -349,10 +405,6 @@ async function refreshDashboardFromStoredData() {
           selectedRange.previousEndDate,
         )
       : [];
-
-  if (!allTransactions.length) {
-    return;
-  }
 
   const currentMetrics = calculateMetrics(transactions);
   const comparisonMetrics = calculateMetrics(comparisonTransactions);
@@ -397,6 +449,7 @@ async function refreshDashboardFromStoredData() {
     "refunds",
   );
 
+  analyticsSection.classList.remove("hidden");
   summary.classList.remove("hidden");
   details.classList.remove("hidden");
   filters.classList.remove("hidden");
@@ -429,6 +482,7 @@ async function refreshDashboardFromStoredData() {
   renderRefundImpactTable(buildRefundImpact(transactions));
   renderDailyReport(transactions);
   renderMonthlySummary(transactions, comparisonTransactions);
+  renderDemographics(buildDemographics(transactions));
 }
 
 function getAllTransactionIds() {
@@ -488,6 +542,15 @@ function parseMoney(value) {
   }
 
   return parsed;
+}
+
+function parseCurrencyCode(value) {
+  if (!value) {
+    return "";
+  }
+
+  const match = String(value).trim().match(/^([A-Z]{3})\b/i);
+  return match ? match[1].toUpperCase() : "";
 }
 
 function parseKlookDate(value) {
@@ -688,13 +751,39 @@ function renderTable(elementId, data) {
   });
 }
 
+function renderDemographics(data) {
+  const topCountry = data.userCountries[0];
+  const promoShare = data.totalBookings
+    ? data.promoCodeBookings / data.totalBookings
+    : 0;
+  const codeBasedShare = data.totalBookings
+    ? data.codeBasedBookings / data.totalBookings
+    : 0;
+
+  countryReachValue.textContent = data.countryReach.toLocaleString();
+  topCountryValue.textContent = topCountry ? topCountry.name : "-";
+  topCountryMeta.textContent = topCountry
+    ? `${topCountry.bookings.toLocaleString()} bookings`
+    : "0 bookings";
+  promoBookingShareValue.textContent = formatPercentage(promoShare);
+  codeBasedShareValue.textContent = formatPercentage(codeBasedShare);
+
+  renderCountryTable(data.userCountries);
+  renderPromoCodeTable(data.promoCodes);
+  renderSimpleMixTable("trackingBaseTable", data.trackingBase, "share");
+  renderSimpleMixTable("platformTable", data.platforms, "share");
+  renderCurrencyTable(data.salesCurrencies);
+
+  demographicsSection.classList.remove("hidden");
+}
+
 async function exportBackup() {
   const transactions = await getAllTransactions();
   const imports = await getAllImports();
 
   const backup = {
     app: "klook-commission-dashboard",
-    version: 1,
+    version: DATA_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     transactions,
     imports,
@@ -728,12 +817,27 @@ function getAllImports() {
 async function importBackup(file) {
   const text = await file.text();
   const backup = JSON.parse(text);
+  const storedTransactions = await getAllTransactions();
 
   if (
     backup.app !== "klook-commission-dashboard" ||
     !Array.isArray(backup.transactions)
   ) {
     alert("This does not look like a valid dashboard backup file.");
+    return;
+  }
+
+  if (hasIncompatibleStoredData(storedTransactions)) {
+    alert(
+      "Stored data is from an older dashboard version. Clear data and re-import all CSV files before importing a backup.",
+    );
+    return;
+  }
+
+  if (hasIncompatibleStoredData(backup.transactions)) {
+    alert(
+      "This backup is from an older dashboard version. Re-import your original CSV exports instead.",
+    );
     return;
   }
 
@@ -783,6 +887,49 @@ function clearAllData() {
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
   });
+}
+
+function hasIncompatibleStoredData(transactions) {
+  return transactions.some((transaction) => !isCompatibleTransaction(transaction));
+}
+
+function isCompatibleTransaction(transaction) {
+  const requiredFields = [
+    "schemaVersion",
+    "trackingBase",
+    "promoCodeType",
+    "kreatorPromoCode",
+    "salesCurrency",
+    "salesAmount",
+    "websiteName",
+  ];
+
+  return (
+    transaction?.schemaVersion === DATA_SCHEMA_VERSION &&
+    requiredFields.every((field) =>
+      Object.prototype.hasOwnProperty.call(transaction, field),
+    )
+  );
+}
+
+function hideDashboardSections() {
+  summary.classList.add("hidden");
+  details.classList.add("hidden");
+  filters.classList.add("hidden");
+  analyticsSection.classList.add("hidden");
+  dailyReport.classList.add("hidden");
+  monthlySummary.classList.add("hidden");
+  demographicsSection.classList.add("hidden");
+}
+
+function showCompatibilityNotice() {
+  compatibilityMessage.textContent =
+    "Stored dashboard data is from an older version and does not include the demographics fields used by this release.";
+  compatibilityNotice.classList.remove("hidden");
+}
+
+function hideCompatibilityNotice() {
+  compatibilityNotice.classList.add("hidden");
 }
 
 function filterTransactionsByDateRange(transactions) {
@@ -1367,6 +1514,280 @@ function formatMonthLabel(date) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function buildDemographics(transactions) {
+  const countryMap = {};
+  const promoMap = {};
+  const trackingBaseMap = {};
+  const platformMap = {};
+  const salesCurrencyMap = {};
+
+  let totalBookings = 0;
+  let promoCodeBookings = 0;
+  let codeBasedBookings = 0;
+
+  transactions.forEach((transaction) => {
+    const country = normalizeDimensionValue(transaction.userCountry, "Unknown");
+    const promoCode = normalizeDimensionValue(
+      transaction.kreatorPromoCode,
+      "No Code",
+    );
+    const trackingBase = normalizeTrackingBase(transaction.trackingBase);
+    const platform = normalizeDimensionValue(transaction.platform, "Unknown");
+    const salesCurrency = normalizeDimensionValue(
+      transaction.salesCurrency,
+      "Unknown",
+    );
+
+    if (transaction.actionType === "Payment") {
+      totalBookings += 1;
+
+      if (!countryMap[country]) {
+        countryMap[country] = {
+          name: country,
+          bookings: 0,
+          netCommission: 0,
+          refundCount: 0,
+        };
+      }
+
+      countryMap[country].bookings += 1;
+      countryMap[country].netCommission += transaction.commissionAmountUsd;
+
+      if (!trackingBaseMap[trackingBase]) {
+        trackingBaseMap[trackingBase] = { name: trackingBase, bookings: 0 };
+      }
+
+      trackingBaseMap[trackingBase].bookings += 1;
+
+      if (!platformMap[platform]) {
+        platformMap[platform] = { name: platform, bookings: 0 };
+      }
+
+      platformMap[platform].bookings += 1;
+
+      if (!salesCurrencyMap[salesCurrency]) {
+        salesCurrencyMap[salesCurrency] = {
+          name: salesCurrency,
+          bookings: 0,
+          salesAmount: 0,
+        };
+      }
+
+      salesCurrencyMap[salesCurrency].bookings += 1;
+      salesCurrencyMap[salesCurrency].salesAmount += transaction.salesAmount || 0;
+
+      if (promoCode !== "No Code") {
+        promoCodeBookings += 1;
+
+        if (!promoMap[promoCode]) {
+          promoMap[promoCode] = {
+            name: promoCode,
+            bookings: 0,
+            netCommission: 0,
+          };
+        }
+
+        promoMap[promoCode].bookings += 1;
+        promoMap[promoCode].netCommission += transaction.commissionAmountUsd;
+      }
+
+      if (trackingBase === "Code-Based") {
+        codeBasedBookings += 1;
+      }
+    }
+
+    if (transaction.actionType === "Refund") {
+      if (!countryMap[country]) {
+        countryMap[country] = {
+          name: country,
+          bookings: 0,
+          netCommission: 0,
+          refundCount: 0,
+        };
+      }
+
+      countryMap[country].netCommission += transaction.commissionAmountUsd;
+      countryMap[country].refundCount += 1;
+
+      if (promoCode !== "No Code") {
+        if (!promoMap[promoCode]) {
+          promoMap[promoCode] = {
+            name: promoCode,
+            bookings: 0,
+            netCommission: 0,
+          };
+        }
+
+        promoMap[promoCode].netCommission += transaction.commissionAmountUsd;
+      }
+    }
+  });
+
+  const userCountries = Object.values(countryMap)
+    .map((item) => ({
+      ...item,
+      avgCommissionPerBooking:
+        item.bookings > 0 ? item.netCommission / item.bookings : 0,
+      refundRate: item.bookings > 0 ? item.refundCount / item.bookings : 0,
+    }))
+    .sort((a, b) => {
+      if (b.bookings !== a.bookings) {
+        return b.bookings - a.bookings;
+      }
+
+      return b.netCommission - a.netCommission;
+    })
+    .slice(0, 12);
+
+  const promoCodes = Object.values(promoMap)
+    .map((item) => ({
+      ...item,
+      share: totalBookings > 0 ? item.bookings / totalBookings : 0,
+    }))
+    .sort((a, b) => b.bookings - a.bookings)
+    .slice(0, 10);
+
+  return {
+    countryReach: Object.values(countryMap).filter(
+      (item) => item.name !== "Unknown" && item.bookings > 0,
+    ).length,
+    totalBookings,
+    promoCodeBookings,
+    codeBasedBookings,
+    userCountries,
+    promoCodes,
+    trackingBase: buildShareList(trackingBaseMap, totalBookings),
+    platforms: buildShareList(platformMap, totalBookings),
+    salesCurrencies: Object.values(salesCurrencyMap)
+      .sort((a, b) => b.bookings - a.bookings)
+      .slice(0, 8),
+  };
+}
+
+function buildShareList(map, totalBookings) {
+  return Object.values(map)
+    .map((item) => ({
+      ...item,
+      share: totalBookings > 0 ? item.bookings / totalBookings : 0,
+    }))
+    .sort((a, b) => b.bookings - a.bookings)
+    .slice(0, 8);
+}
+
+function renderCountryTable(rows) {
+  const tbody = document.querySelector("#userCountryTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="5" class="empty-row">No country data in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+      <td>${formatUsd(row.netCommission)}</td>
+      <td>${formatUsd(row.avgCommissionPerBooking)}</td>
+      <td>${formatPercentage(row.refundRate)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderPromoCodeTable(rows) {
+  const tbody = document.querySelector("#promoCodeTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-row">No promo code usage in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+      <td>${formatUsd(row.netCommission)}</td>
+      <td>${formatPercentage(row.share)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSimpleMixTable(elementId, rows, valueField) {
+  const tbody = document.querySelector(`#${elementId} tbody`);
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="3" class="empty-row">No data in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+      <td>${valueField === "share" ? formatPercentage(row.share) : row[valueField]}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderCurrencyTable(rows) {
+  const tbody = document.querySelector("#salesCurrencyTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="3" class="empty-row">No currency data in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+      <td>${formatCurrencyBucketTotal(row.name, row.salesAmount)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function normalizeDimensionValue(value, fallback = "Unknown") {
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
+}
+
+function normalizeTrackingBase(value) {
+  const normalized = normalizeDimensionValue(value, "Unknown");
+
+  if (normalized.toLowerCase() === "code-based") {
+    return "Code-Based";
+  }
+
+  return normalized;
+}
+
+function formatPercentage(value) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatCurrencyBucketTotal(currency, amount) {
+  if (!currency || currency === "Unknown") {
+    return amount.toFixed(2);
+  }
+
+  return `${currency} ${amount.toFixed(2)}`;
 }
 
 function calculateMetrics(transactions) {

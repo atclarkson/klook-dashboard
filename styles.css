@@ -233,6 +233,25 @@ button.danger:hover {
   margin-top: 0;
 }
 
+.compatibility-notice {
+  margin-top: 24px;
+  background: linear-gradient(135deg, #fff8f3, #fffdf8);
+  border: 1px solid rgba(255, 91, 0, 0.24);
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.compatibility-notice h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.compatibility-notice p {
+  margin: 0 0 8px;
+  color: var(--text-main);
+}
+
 .hidden {
   display: none;
 }
@@ -679,4 +698,130 @@ td {
 
 .comparison-negative {
   color: #dc2626 !important;
+}
+
+.demographics {
+  margin-top: 24px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.section-heading {
+  margin-bottom: 18px;
+}
+
+.section-heading h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.section-heading p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.demographics-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.demographic-card {
+  background: linear-gradient(135deg, rgba(255, 91, 0, 0.04), rgba(0, 203, 208, 0.03));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.demographic-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.demographic-card small {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.demographics-grid {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.compact-table-card table th,
+.compact-table-card table td,
+#userCountryTable th,
+#userCountryTable td,
+#promoCodeTable th,
+#promoCodeTable td,
+#trackingBaseTable th,
+#trackingBaseTable td,
+#platformTable th,
+#platformTable td,
+#salesCurrencyTable th,
+#salesCurrencyTable td {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+#userCountryTable tr:last-child td,
+#promoCodeTable tr:last-child td,
+#trackingBaseTable tr:last-child td,
+#platformTable tr:last-child td,
+#salesCurrencyTable tr:last-child td {
+  border-bottom: none;
+}
+
+#userCountryTable td:nth-child(2),
+#userCountryTable td:nth-child(3),
+#userCountryTable td:nth-child(4),
+#userCountryTable td:nth-child(5),
+#promoCodeTable td:nth-child(2),
+#promoCodeTable td:nth-child(3),
+#promoCodeTable td:nth-child(4),
+#trackingBaseTable td:nth-child(2),
+#trackingBaseTable td:nth-child(3),
+#platformTable td:nth-child(2),
+#platformTable td:nth-child(3),
+#salesCurrencyTable td:nth-child(2),
+#salesCurrencyTable td:nth-child(3) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.empty-row {
+  text-align: center !important;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 18px 0;
+}
+
+@media (max-width: 1000px) {
+  .demographics-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .demographics-kpis {
+    grid-template-columns: 1fr;
+  }
 }

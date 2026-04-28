@@ -102,6 +102,18 @@
         <p id="dateRange"></p>
       </section>
 
+      <section id="compatibilityNotice" class="compatibility-notice hidden">
+        <h2>Data Re-Import Required</h2>
+        <p id="compatibilityMessage">
+          Stored dashboard data is from an older version and does not include
+          the fields required for demographics.
+        </p>
+        <p>
+          Clear the saved data, then re-import your CSV exports to use this
+          version.
+        </p>
+      </section>
+
       <section id="dailyReport" class="daily-report hidden">
         <h2 id="dailyReportTitle">Daily Report</h2>
 
@@ -273,6 +285,119 @@
             </thead>
             <tbody></tbody>
           </table>
+        </div>
+      </section>
+
+      <section id="demographics" class="demographics hidden">
+        <div class="section-heading">
+          <h2>Demographics & Acquisition</h2>
+          <p>
+            User origin, promo usage, tracking source, platform, and booking
+            currency from the Klook export.
+          </p>
+        </div>
+
+        <div class="demographics-kpis">
+          <div class="demographic-card">
+            <span class="label">Countries Reached</span>
+            <strong id="countryReachValue">0</strong>
+            <small id="countryReachMeta">Distinct user countries</small>
+          </div>
+
+          <div class="demographic-card">
+            <span class="label">Top User Country</span>
+            <strong id="topCountryValue">-</strong>
+            <small id="topCountryMeta">0 bookings</small>
+          </div>
+
+          <div class="demographic-card">
+            <span class="label">Promo Code Bookings</span>
+            <strong id="promoBookingShareValue">0%</strong>
+            <small id="promoBookingShareMeta">Bookings using a creator code</small>
+          </div>
+
+          <div class="demographic-card">
+            <span class="label">Code-Based Share</span>
+            <strong id="codeBasedShareValue">0%</strong>
+            <small id="codeBasedShareMeta">Bookings tracked as code-based</small>
+          </div>
+        </div>
+
+        <div class="grid-2 demographics-grid">
+          <div class="table-card">
+            <h3>Users by Country</h3>
+            <table id="userCountryTable">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Bookings</th>
+                  <th>Net Commission</th>
+                  <th>Avg / Booking</th>
+                  <th>Refund Rate</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="table-card">
+            <h3>Top Promo Codes</h3>
+            <table id="promoCodeTable">
+              <thead>
+                <tr>
+                  <th>Promo Code</th>
+                  <th>Bookings</th>
+                  <th>Net Commission</th>
+                  <th>Share</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-3 demographics-grid">
+          <div class="table-card compact-table-card">
+            <h3>Tracking Base</h3>
+            <table id="trackingBaseTable">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Bookings</th>
+                  <th>Share</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="table-card compact-table-card">
+            <h3>Platform</h3>
+            <table id="platformTable">
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Bookings</th>
+                  <th>Share</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="table-card compact-table-card">
+            <h3>Sales Currency</h3>
+            <table id="salesCurrencyTable">
+              <thead>
+                <tr>
+                  <th>Currency</th>
+                  <th>Bookings</th>
+                  <th>Sales Total</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
