@@ -756,6 +756,66 @@ td {
   margin-bottom: 20px;
 }
 
+.map-card {
+  min-height: 460px;
+  overflow: hidden;
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.card-header-row h3 {
+  margin: 0 0 4px;
+}
+
+.card-header-row p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.metric-toggle {
+  display: inline-flex;
+  background: #f8fafc;
+  border: 1px solid #d9e3ee;
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.metric-toggle-btn {
+  border: none;
+  background: transparent;
+  color: #58708d;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.metric-toggle-btn:hover {
+  border-color: transparent;
+  color: var(--text-main);
+}
+
+.metric-toggle-btn.active {
+  background: white;
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.user-country-map {
+  min-height: 360px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -768,6 +828,8 @@ td {
 #userCountryTable td,
 #promoCodeTable th,
 #promoCodeTable td,
+#countryRankingTable th,
+#countryRankingTable td,
 #trackingBaseTable th,
 #trackingBaseTable td,
 #platformTable th,
@@ -780,6 +842,7 @@ td {
 
 #userCountryTable tr:last-child td,
 #promoCodeTable tr:last-child td,
+#countryRankingTable tr:last-child td,
 #trackingBaseTable tr:last-child td,
 #platformTable tr:last-child td,
 #salesCurrencyTable tr:last-child td {
@@ -793,6 +856,9 @@ td {
 #promoCodeTable td:nth-child(2),
 #promoCodeTable td:nth-child(3),
 #promoCodeTable td:nth-child(4),
+#countryRankingTable td:nth-child(2),
+#countryRankingTable td:nth-child(3),
+#countryRankingTable td:nth-child(4),
 #trackingBaseTable td:nth-child(2),
 #trackingBaseTable td:nth-child(3),
 #platformTable td:nth-child(2),
@@ -810,6 +876,15 @@ td {
   padding: 18px 0;
 }
 
+.map-empty-state {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 @media (max-width: 1000px) {
   .demographics-kpis {
     grid-template-columns: repeat(2, 1fr);
@@ -817,6 +892,11 @@ td {
 
   .grid-3 {
     grid-template-columns: 1fr;
+  }
+
+  .card-header-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

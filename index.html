@@ -324,6 +324,36 @@
         </div>
 
         <div class="grid-2 demographics-grid">
+          <div class="table-card map-card">
+            <div class="card-header-row">
+              <div>
+                <h3>User Country Map</h3>
+                <p>Customer origin by country</p>
+              </div>
+
+              <div class="metric-toggle" role="tablist" aria-label="Map metric">
+                <button
+                  id="mapMetricCommission"
+                  class="metric-toggle-btn active"
+                  type="button"
+                  data-map-metric="commission"
+                >
+                  Commission
+                </button>
+                <button
+                  id="mapMetricBookings"
+                  class="metric-toggle-btn"
+                  type="button"
+                  data-map-metric="bookings"
+                >
+                  Bookings
+                </button>
+              </div>
+            </div>
+
+            <div id="userCountryMap" class="user-country-map"></div>
+          </div>
+
           <div class="table-card">
             <h3>Users by Country</h3>
             <table id="userCountryTable">
@@ -339,7 +369,9 @@
               <tbody></tbody>
             </table>
           </div>
+        </div>
 
+        <div class="grid-2 demographics-grid">
           <div class="table-card">
             <h3>Top Promo Codes</h3>
             <table id="promoCodeTable">
@@ -349,6 +381,21 @@
                   <th>Bookings</th>
                   <th>Net Commission</th>
                   <th>Share</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="table-card">
+            <h3>Country Ranking</h3>
+            <table id="countryRankingTable">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Bookings</th>
+                  <th>Net Commission</th>
+                  <th>Avg / Booking</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -404,6 +451,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

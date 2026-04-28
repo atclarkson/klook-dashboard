@@ -5,6 +5,7 @@ const DATA_SCHEMA_VERSION = 2;
 let db = null;
 let chartInstance = null;
 let selectedTrendMetric = "netCommission";
+let selectedCountryMapMetric = "commission";
 let refundImpactSort = {
   field: "payment",
   direction: "desc",
@@ -56,6 +57,8 @@ const topCountryValue = document.getElementById("topCountryValue");
 const topCountryMeta = document.getElementById("topCountryMeta");
 const promoBookingShareValue = document.getElementById("promoBookingShareValue");
 const codeBasedShareValue = document.getElementById("codeBasedShareValue");
+const userCountryMap = document.getElementById("userCountryMap");
+const mapMetricButtons = document.querySelectorAll("[data-map-metric]");
 
 const comparisonMode = document.getElementById("comparisonMode");
 const netCommissionCompareEl = document.getElementById("netCommissionCompare");
@@ -164,6 +167,20 @@ document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
 });
 
 comparisonMode.addEventListener("change", refreshDashboardFromStoredData);
+
+mapMetricButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const { mapMetric } = button.dataset;
+
+    if (!mapMetric || selectedCountryMapMetric === mapMetric) {
+      return;
+    }
+
+    selectedCountryMapMetric = mapMetric;
+    syncCountryMapMetricToggle();
+    refreshDashboardFromStoredData();
+  });
+});
 
 kpiCards.forEach((card) => {
   const activateCard = () => {
@@ -770,9 +787,12 @@ function renderDemographics(data) {
 
   renderCountryTable(data.userCountries);
   renderPromoCodeTable(data.promoCodes);
+  renderCountryRankingTable(data.countryRanking);
+  renderCountryMap(data.countryRanking, selectedCountryMapMetric);
   renderSimpleMixTable("trackingBaseTable", data.trackingBase, "share");
   renderSimpleMixTable("platformTable", data.platforms, "share");
   renderCurrencyTable(data.salesCurrencies);
+  syncCountryMapMetricToggle();
 
   demographicsSection.classList.remove("hidden");
 }
@@ -1528,7 +1548,8 @@ function buildDemographics(transactions) {
   let codeBasedBookings = 0;
 
   transactions.forEach((transaction) => {
-    const country = normalizeDimensionValue(transaction.userCountry, "Unknown");
+    const countryCode = normalizeCountryCode(transaction.userCountry);
+    const country = countryCode || "Unknown";
     const promoCode = normalizeDimensionValue(
       transaction.kreatorPromoCode,
       "No Code",
@@ -1545,7 +1566,8 @@ function buildDemographics(transactions) {
 
       if (!countryMap[country]) {
         countryMap[country] = {
-          name: country,
+          code: countryCode,
+          name: formatCountryName(countryCode || country),
           bookings: 0,
           netCommission: 0,
           refundCount: 0,
@@ -1601,7 +1623,8 @@ function buildDemographics(transactions) {
     if (transaction.actionType === "Refund") {
       if (!countryMap[country]) {
         countryMap[country] = {
-          name: country,
+          code: countryCode,
+          name: formatCountryName(countryCode || country),
           bookings: 0,
           netCommission: 0,
           refundCount: 0,
@@ -1641,6 +1664,23 @@ function buildDemographics(transactions) {
     })
     .slice(0, 12);
 
+  const countryRanking = Object.values(countryMap)
+    .map((item) => ({
+      ...item,
+      avgCommissionPerBooking:
+        item.bookings > 0 ? item.netCommission / item.bookings : 0,
+      refundRate: item.bookings > 0 ? item.refundCount / item.bookings : 0,
+    }))
+    .filter((item) => item.bookings > 0)
+    .sort((a, b) => {
+      if (selectedCountryMapMetric === "bookings") {
+        return b.bookings - a.bookings;
+      }
+
+      return b.netCommission - a.netCommission;
+    })
+    .slice(0, 12);
+
   const promoCodes = Object.values(promoMap)
     .map((item) => ({
       ...item,
@@ -1657,6 +1697,7 @@ function buildDemographics(transactions) {
     promoCodeBookings,
     codeBasedBookings,
     userCountries,
+    countryRanking,
     promoCodes,
     trackingBase: buildShareList(trackingBaseMap, totalBookings),
     platforms: buildShareList(platformMap, totalBookings),
@@ -1694,6 +1735,28 @@ function renderCountryTable(rows) {
       <td>${formatUsd(row.netCommission)}</td>
       <td>${formatUsd(row.avgCommissionPerBooking)}</td>
       <td>${formatPercentage(row.refundRate)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderCountryRankingTable(rows) {
+  const tbody = document.querySelector("#countryRankingTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-row">No ranked country data in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+      <td>${formatUsd(row.netCommission)}</td>
+      <td>${formatUsd(row.avgCommissionPerBooking)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -1763,9 +1826,154 @@ function renderCurrencyTable(rows) {
   });
 }
 
+function renderCountryMap(rows, metric) {
+  if (!userCountryMap || typeof Plotly === "undefined") {
+    return;
+  }
+
+  const mappedRows = rows.filter((row) => row.code && row.code.length === 2);
+  const metricLabel =
+    metric === "bookings" ? "Bookings" : "Net Commission";
+  const values = mappedRows.map((row) =>
+    metric === "bookings" ? row.bookings : row.netCommission,
+  );
+
+  if (!mappedRows.length) {
+    userCountryMap.innerHTML =
+      '<div class="map-empty-state">No mappable country data in this range.</div>';
+    return;
+  }
+
+  Plotly.react(
+    userCountryMap,
+    [
+      {
+        type: "choropleth",
+        locationmode: "ISO-3",
+        locations: mappedRows.map((row) => toIso3CountryCode(row.code)),
+        z: values,
+        text: mappedRows.map((row) => row.name),
+        colorscale:
+          metric === "bookings"
+            ? [
+                [0, "#d9f3f4"],
+                [0.45, "#7ad8db"],
+                [1, "#00aeb4"],
+              ]
+            : [
+                [0, "#ffe2d2"],
+                [0.45, "#ff9b67"],
+                [1, "#ff5b00"],
+              ],
+        marker: {
+          line: {
+            color: "#ffffff",
+            width: 0.6,
+          },
+        },
+        showscale: false,
+        hovertemplate:
+          "<b>%{text}</b><br>" +
+          `${metricLabel}: %{customdata[0]}<br>` +
+          "Bookings: %{customdata[1]}<br>" +
+          "Avg / Booking: %{customdata[2]}<extra></extra>",
+        customdata: mappedRows.map((row) => [
+          metric === "bookings"
+            ? row.bookings.toLocaleString()
+            : formatUsd(row.netCommission),
+          row.bookings.toLocaleString(),
+          formatUsd(row.avgCommissionPerBooking),
+        ]),
+      },
+    ],
+    {
+      margin: { t: 0, r: 12, b: 0, l: 12 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      geo: {
+        projection: { type: "natural earth", scale: 0.98 },
+        fitbounds: false,
+        showframe: false,
+        showcoastlines: false,
+        showcountries: true,
+        countrycolor: "#ffffff",
+        showland: true,
+        landcolor: "#eef2f6",
+        bgcolor: "rgba(0,0,0,0)",
+        domain: {
+          x: [0.02, 0.98],
+          y: [0.05, 0.96],
+        },
+      },
+    },
+    {
+      responsive: true,
+      displayModeBar: false,
+    },
+  );
+}
+
 function normalizeDimensionValue(value, fallback = "Unknown") {
   const normalized = String(value || "").trim();
   return normalized || fallback;
+}
+
+function normalizeCountryCode(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : "";
+}
+
+function formatCountryName(value) {
+  if (!value || value === "Unknown") {
+    return "Unknown";
+  }
+
+  try {
+    const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+    return regionNames.of(value) || value;
+  } catch {
+    return value;
+  }
+}
+
+function toIso3CountryCode(code) {
+  const isoMap = {
+    AU: "AUS",
+    BR: "BRA",
+    CA: "CAN",
+    CN: "CHN",
+    DE: "DEU",
+    ES: "ESP",
+    FR: "FRA",
+    GB: "GBR",
+    HK: "HKG",
+    ID: "IDN",
+    IN: "IND",
+    IT: "ITA",
+    JP: "JPN",
+    KR: "KOR",
+    MO: "MAC",
+    MX: "MEX",
+    MY: "MYS",
+    NL: "NLD",
+    NZ: "NZL",
+    PH: "PHL",
+    SG: "SGP",
+    TH: "THA",
+    TW: "TWN",
+    US: "USA",
+    VN: "VNM",
+  };
+
+  return isoMap[code] || code;
+}
+
+function syncCountryMapMetricToggle() {
+  mapMetricButtons.forEach((button) => {
+    const isActive = button.dataset.mapMetric === selectedCountryMapMetric;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
 }
 
 function normalizeTrackingBase(value) {
