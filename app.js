@@ -1,11 +1,16 @@
 const DB_NAME = "klookCommissionDashboard";
 const DB_VERSION = 1;
+// Bump APP_VERSION for user-facing releases.
+// Bump DATA_SCHEMA_VERSION only when stored IndexedDB data becomes incompatible.
+const APP_VERSION = "2.0.0";
 const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
 let chartInstance = null;
+let activityCategoryChartInstance = null;
 let selectedTrendMetric = "netCommission";
 let selectedCountryMapMetric = "commission";
+let selectedActivityCategoryMetric = "commission";
 let refundImpactSort = {
   field: "payment",
   direction: "desc",
@@ -37,6 +42,9 @@ const backupInput = document.getElementById("backupInput");
 const aboutBtn = document.getElementById("aboutBtn");
 const aboutModal = document.getElementById("aboutModal");
 const closeAboutBtn = document.getElementById("closeAboutBtn");
+const appVersionBadge = document.getElementById("appVersionBadge");
+const aboutAppVersion = document.getElementById("aboutAppVersion");
+const aboutSchemaVersion = document.getElementById("aboutSchemaVersion");
 
 const filters = document.getElementById("filters");
 const dateRangeFilter = document.getElementById("dateRangeFilter");
@@ -62,6 +70,18 @@ const promoBookingShareValue = document.getElementById("promoBookingShareValue")
 const codeBasedShareValue = document.getElementById("codeBasedShareValue");
 const userCountryMap = document.getElementById("userCountryMap");
 const mapMetricButtons = document.querySelectorAll("[data-map-metric]");
+const categoryMetricButtons = document.querySelectorAll(
+  "[data-category-metric]",
+);
+const activityCategorySubtitle = document.getElementById(
+  "activityCategorySubtitle",
+);
+const activityCategoryMetricColumn = document.getElementById(
+  "activityCategoryMetricColumn",
+);
+const activityCategorySecondaryColumn = document.getElementById(
+  "activityCategorySecondaryColumn",
+);
 
 const comparisonMode = document.getElementById("comparisonMode");
 const netCommissionCompareEl = document.getElementById("netCommissionCompare");
@@ -76,6 +96,7 @@ const kpiCards = document.querySelectorAll(".kpi-card");
 initApp();
 
 async function initApp() {
+  hydrateVersionUi();
   db = await openDatabase();
   await refreshDashboardFromStoredData();
 }
@@ -197,6 +218,20 @@ mapMetricButtons.forEach((button) => {
 
     selectedCountryMapMetric = mapMetric;
     syncCountryMapMetricToggle();
+    refreshDashboardFromStoredData();
+  });
+});
+
+categoryMetricButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const { categoryMetric } = button.dataset;
+
+    if (!categoryMetric || selectedActivityCategoryMetric === categoryMetric) {
+      return;
+    }
+
+    selectedActivityCategoryMetric = categoryMetric;
+    syncActivityCategoryMetricToggle();
     refreshDashboardFromStoredData();
   });
 });
@@ -515,6 +550,7 @@ async function refreshDashboardFromStoredData() {
 
   renderTable("topActivities", buildTopList(transactions, "activityName"));
   renderTable("topDestinations", buildTopList(transactions, "destination"));
+  renderActivityCategories(buildActivityCategoryBreakdown(transactions));
   renderRefundImpactTable(buildRefundImpact(transactions));
   renderDailyReport(transactions);
   renderMonthlySummary(transactions, comparisonTransactions);
@@ -787,6 +823,195 @@ function renderTable(elementId, data) {
   });
 }
 
+function buildActivityCategoryBreakdown(transactions) {
+  const map = {};
+  let totalBookings = 0;
+  let totalCommission = 0;
+
+  transactions.forEach((transaction) => {
+    const category = normalizeDimensionValue(
+      transaction.activityCategory,
+      "Unknown",
+    );
+
+    if (!map[category]) {
+      map[category] = {
+        name: category,
+        bookings: 0,
+        netCommission: 0,
+      };
+    }
+
+    map[category].netCommission += transaction.commissionAmountUsd;
+    totalCommission += transaction.commissionAmountUsd;
+
+    if (transaction.actionType === "Payment") {
+      map[category].bookings += 1;
+      totalBookings += 1;
+    }
+  });
+
+  const rows = Object.values(map)
+    .map((item) => ({
+      ...item,
+    }))
+    .filter((item) => item.bookings > 0)
+    .sort((a, b) => {
+      if (b.bookings !== a.bookings) {
+        return b.bookings - a.bookings;
+      }
+
+      return b.netCommission - a.netCommission;
+    });
+
+  return {
+    totalBookings,
+    totalCommission,
+    rows,
+  };
+}
+
+function renderActivityCategories(data) {
+  const rows = getActivityCategoryRowsForMetric(
+    data.rows,
+    data.totalBookings,
+    data.totalCommission,
+    selectedActivityCategoryMetric,
+  );
+
+  renderActivityCategoryTable(rows, selectedActivityCategoryMetric);
+  renderActivityCategoryChart(rows, selectedActivityCategoryMetric);
+  syncActivityCategoryMetricToggle();
+}
+
+function getActivityCategoryRowsForMetric(
+  rows,
+  totalBookings,
+  totalCommission,
+  metric,
+) {
+  return rows
+    .map((row) => {
+      const metricValue =
+        metric === "bookings" ? row.bookings : row.netCommission;
+      const shareBase =
+        metric === "bookings" ? totalBookings : Math.abs(totalCommission);
+      const share = shareBase > 0 ? metricValue / shareBase : 0;
+
+      return {
+        ...row,
+        metricValue,
+        share,
+      };
+    })
+    .sort((a, b) => b.metricValue - a.metricValue);
+}
+
+function renderActivityCategoryTable(rows, metric) {
+  const tbody = document.querySelector("#activityCategoryTable tbody");
+  tbody.innerHTML = "";
+  activityCategoryMetricColumn.textContent =
+    metric === "bookings" ? "Bookings" : "Net Commission";
+  activityCategorySecondaryColumn.textContent =
+    metric === "bookings" ? "Net Commission" : "Bookings";
+
+  activityCategorySubtitle.textContent =
+    metric === "bookings"
+      ? "Booking share by activity category in the current filter range"
+      : "Commission share by activity category in the current filter range";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="4" class="empty-row">No category data in this range.</td></tr>';
+    return;
+  }
+
+  rows.slice(0, 12).forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${metric === "bookings" ? row.bookings.toLocaleString() : formatUsd(row.netCommission)}</td>
+      <td>${metric === "bookings" ? formatUsd(row.netCommission) : row.bookings.toLocaleString()}</td>
+      <td>${formatPercentage(row.share)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderActivityCategoryChart(rows, metric) {
+  const ctx = document.getElementById("activityCategoryChart");
+
+  if (!ctx) {
+    return;
+  }
+
+  if (activityCategoryChartInstance) {
+    activityCategoryChartInstance.destroy();
+  }
+
+  const topRows = rows.slice(0, 8);
+
+  if (!topRows.length) {
+    const context = ctx.getContext("2d");
+    if (context) {
+      context.clearRect(0, 0, ctx.width, ctx.height);
+    }
+    return;
+  }
+
+  activityCategoryChartInstance = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: topRows.map((row) => row.name),
+      datasets: [
+        {
+          data: topRows.map((row) => row.metricValue),
+          backgroundColor: [
+            "#ff5b00",
+            "#00cbd0",
+            "#4d40ca",
+            "#ffc200",
+            "#f97316",
+            "#0ea5e9",
+            "#16a34a",
+            "#a855f7",
+          ],
+          borderColor: "#ffffff",
+          borderWidth: 2,
+          hoverOffset: 6,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "62%",
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            boxWidth: 12,
+            usePointStyle: true,
+            padding: 16,
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const row = topRows[context.dataIndex];
+              const valueLabel =
+                metric === "bookings"
+                  ? `${row.bookings.toLocaleString()} bookings`
+                  : formatUsd(row.netCommission);
+              return `${row.name}: ${valueLabel} (${formatPercentage(row.share)})`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 function renderDemographics(data) {
   const topCountry = data.userCountries[0];
   const promoShare = data.totalBookings
@@ -822,7 +1047,8 @@ async function exportBackup() {
 
   const backup = {
     app: "klook-commission-dashboard",
-    version: DATA_SCHEMA_VERSION,
+    version: APP_VERSION,
+    schemaVersion: DATA_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     transactions,
     imports,
@@ -979,6 +1205,12 @@ function openAboutModal() {
 function closeAboutModal() {
   aboutModal.classList.add("hidden");
   document.body.classList.remove("modal-open");
+}
+
+function hydrateVersionUi() {
+  appVersionBadge.textContent = `v${APP_VERSION}`;
+  aboutAppVersion.textContent = `v${APP_VERSION}`;
+  aboutSchemaVersion.textContent = String(DATA_SCHEMA_VERSION);
 }
 
 function filterTransactionsByDateRange(transactions) {
@@ -2000,6 +2232,15 @@ function toIso3CountryCode(code) {
 function syncCountryMapMetricToggle() {
   mapMetricButtons.forEach((button) => {
     const isActive = button.dataset.mapMetric === selectedCountryMapMetric;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function syncActivityCategoryMetricToggle() {
+  categoryMetricButtons.forEach((button) => {
+    const isActive =
+      button.dataset.categoryMetric === selectedActivityCategoryMetric;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });

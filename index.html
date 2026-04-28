@@ -77,7 +77,10 @@
 
           <div>
             <h1>Klook Commission Dashboard</h1>
-            <p>Private local dashboard for commission tracking</p>
+            <p>
+              Private local dashboard for commission tracking
+              <span id="appVersionBadge" class="version-badge">v0.0.0</span>
+            </p>
           </div>
           <div class="header-actions">
             <button id="aboutBtn" type="button">About</button>
@@ -105,6 +108,18 @@
           </div>
 
           <div class="modal-content">
+            <section>
+              <h3>Version</h3>
+              <p>
+                App version:
+                <strong id="aboutAppVersion">v0.0.0</strong>
+              </p>
+              <p>
+                Data schema version:
+                <strong id="aboutSchemaVersion">0</strong>
+              </p>
+            </section>
+
             <section>
               <h3>What This Is</h3>
               <p>
@@ -182,17 +197,19 @@
         </div>
       </div>
 
-      <section id="dropZone" class="drop-zone">
-        <h2>Drop CSV file here</h2>
-        <p>or click to choose a file</p>
-        <input id="fileInput" type="file" accept=".csv" hidden />
-      </section>
+      <div class="intro-grid">
+        <section id="dropZone" class="drop-zone">
+          <h2>Drop CSV file here</h2>
+          <p>or click to choose a file</p>
+          <input id="fileInput" type="file" accept=".csv" hidden />
+        </section>
 
-      <section id="details" class="details hidden">
-        <h2>Import Preview</h2>
-        <p id="fileName"></p>
-        <p id="dateRange"></p>
-      </section>
+        <section id="details" class="details hidden">
+          <h2>Import Preview</h2>
+          <p id="fileName"></p>
+          <p id="dateRange"></p>
+        </section>
+      </div>
 
       <section id="compatibilityNotice" class="compatibility-notice hidden">
         <h2>Data Re-Import Required</h2>
@@ -361,22 +378,79 @@
             </table>
           </div>
         </div>
+
+        <div class="grid-2">
+          <div class="chart-card category-chart-card">
+            <div class="card-header-row">
+              <div>
+                <h2>Top Activity Categories</h2>
+                <p id="activityCategorySubtitle" class="section-subtitle">
+                  Booking share by activity category in the current filter range
+                </p>
+              </div>
+
+              <div
+                class="metric-toggle"
+                role="tablist"
+                aria-label="Activity category metric"
+              >
+                <button
+                  id="categoryMetricCommission"
+                  class="metric-toggle-btn active"
+                  type="button"
+                  data-category-metric="commission"
+                >
+                  Commission
+                </button>
+                <button
+                  id="categoryMetricBookings"
+                  class="metric-toggle-btn"
+                  type="button"
+                  data-category-metric="bookings"
+                >
+                  Bookings
+                </button>
+              </div>
+            </div>
+            <div class="category-chart-wrap">
+              <canvas id="activityCategoryChart"></canvas>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <h2>Category Breakdown</h2>
+            <table id="activityCategoryTable">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th id="activityCategoryMetricColumn">Net Commission</th>
+                  <th id="activityCategorySecondaryColumn">Bookings</th>
+                  <th>Share</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="table-card">
           <h2>Refund Impact</h2>
-          <table id="refundImpact">
-            <thead>
-              <tr>
-                <th data-sort="name">Activity</th>
-                <th data-sort="payment">Payment $</th>
-                <th data-sort="paymentCount">Sold</th>
-                <th data-sort="refund">Refund $</th>
-                <th data-sort="refundCount">Refunds</th>
-                <th data-sort="net">Net $</th>
-                <th data-sort="refundRate">Rate</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <div class="refund-impact-wrap">
+            <table id="refundImpact">
+              <thead>
+                <tr>
+                  <th data-sort="name">Activity</th>
+                  <th data-sort="payment">Payment $</th>
+                  <th data-sort="paymentCount">Sold</th>
+                  <th data-sort="refund">Refund $</th>
+                  <th data-sort="refundCount">Refunds</th>
+                  <th data-sort="net">Net $</th>
+                  <th data-sort="refundRate">Rate</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

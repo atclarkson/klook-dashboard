@@ -75,6 +75,25 @@ If you want to remove third-party runtime requests entirely, these libraries can
 - country-origin map
 - local JSON backup and restore
 
+## Versioning
+
+This project now uses simple app versioning plus a separate internal data schema version.
+
+- app version tracks user-facing releases
+- data schema version tracks compatibility of stored IndexedDB data
+
+Use this bump policy:
+
+- `major` for breaking UX, behavior, or stored-data changes
+- `minor` for new features that do not break existing data
+- `patch` for fixes, copy changes, styling cleanups, and safe refactors
+
+Bump `DATA_SCHEMA_VERSION` only when older saved IndexedDB data should no longer be treated as compatible.
+
+Breaking stored-data changes may require clearing old local data and re-importing CSV files.
+
+See [CHANGELOG.md](/Users/adamclarkson/dev/klook-dashboard/CHANGELOG.md) for release notes.
+
 ## How To Use
 
 ### 1. Export Data From Klook

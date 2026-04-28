@@ -108,11 +108,35 @@ button.danger:hover {
   font-size: 16px;
 }
 
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(77, 64, 202, 0.08);
+  color: var(--klook-purple);
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.intro-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
 .drop-zone {
   border: 2px dashed var(--border);
   border-radius: 16px;
   background: var(--card-bg);
-  padding: 48px 24px;
+  min-height: 180px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -305,16 +329,26 @@ button.danger:hover {
 }
 
 .details {
-  margin-top: 24px;
   background: var(--card-bg);
   border-radius: 16px;
-  padding: 20px;
+  min-height: 180px;
+  padding: 22px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
   border: 1px solid var(--border);
 }
 
 .details h2 {
-  margin-top: 0;
+  margin: 0 0 12px;
+}
+
+.details p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+  color: var(--text-main);
+}
+
+.details p:last-child {
+  margin-bottom: 0;
 }
 
 .compatibility-notice {
@@ -343,6 +377,10 @@ button.danger:hover {
 @media (max-width: 800px) {
   .summary {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .intro-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -384,6 +422,22 @@ button.danger:hover {
   padding: 20px;
   margin-bottom: 20px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.section-subtitle {
+  margin: -4px 0 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.category-chart-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.category-chart-wrap {
+  position: relative;
+  min-height: 360px;
 }
 
 .grid-2 {
@@ -560,6 +614,14 @@ td {
   min-width: 980px;
 }
 
+.refund-impact-wrap {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 14px;
+}
+
 #refundImpact th,
 #refundImpact td {
   padding: 10px 12px;
@@ -595,6 +657,10 @@ td {
 
 #refundImpact th {
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
 }
 
 #refundImpact tbody tr {
@@ -924,6 +990,8 @@ td {
 .compact-table-card table td,
 #userCountryTable th,
 #userCountryTable td,
+#activityCategoryTable th,
+#activityCategoryTable td,
 #promoCodeTable th,
 #promoCodeTable td,
 #countryRankingTable th,
@@ -939,6 +1007,7 @@ td {
 }
 
 #userCountryTable tr:last-child td,
+#activityCategoryTable tr:last-child td,
 #promoCodeTable tr:last-child td,
 #countryRankingTable tr:last-child td,
 #trackingBaseTable tr:last-child td,
@@ -951,6 +1020,12 @@ td {
 #userCountryTable td:nth-child(3),
 #userCountryTable td:nth-child(4),
 #userCountryTable td:nth-child(5),
+#activityCategoryTable th:nth-child(2),
+#activityCategoryTable th:nth-child(3),
+#activityCategoryTable th:nth-child(4),
+#activityCategoryTable td:nth-child(2),
+#activityCategoryTable td:nth-child(3),
+#activityCategoryTable td:nth-child(4),
 #promoCodeTable td:nth-child(2),
 #promoCodeTable td:nth-child(3),
 #promoCodeTable td:nth-child(4),
