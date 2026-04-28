@@ -1,8 +1,8 @@
 const DB_NAME = "klookCommissionDashboard";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 // Bump APP_VERSION for user-facing releases.
 // Bump DATA_SCHEMA_VERSION only when stored IndexedDB data becomes incompatible.
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.1.0";
 const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
@@ -11,6 +11,8 @@ let activityCategoryChartInstance = null;
 let selectedTrendMetric = "netCommission";
 let selectedCountryMapMetric = "commission";
 let selectedActivityCategoryMetric = "commission";
+let selectedPayoutMetric = "commission";
+let activeDashboardView = "overview";
 let refundImpactSort = {
   field: "payment",
   direction: "desc",
@@ -19,6 +21,7 @@ let refundImpactSort = {
 // Constants
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
+const importSection = document.getElementById("importSection");
 
 const summary = document.getElementById("summary");
 const details = document.getElementById("details");
@@ -34,6 +37,7 @@ const avgCommissionPerBookingEl = document.getElementById(
 const refundRowsEl = document.getElementById("refundRows");
 const fileNameEl = document.getElementById("fileName");
 const dateRangeEl = document.getElementById("dateRange");
+const billingStatusEl = document.getElementById("billingStatus");
 
 const exportBackupBtn = document.getElementById("exportBackupBtn");
 const importBackupBtn = document.getElementById("importBackupBtn");
@@ -47,6 +51,8 @@ const aboutAppVersion = document.getElementById("aboutAppVersion");
 const aboutSchemaVersion = document.getElementById("aboutSchemaVersion");
 
 const filters = document.getElementById("filters");
+const viewTabs = document.getElementById("viewTabs");
+const viewTabButtons = document.querySelectorAll("[data-view]");
 const dateRangeFilter = document.getElementById("dateRangeFilter");
 const trendGrouping = document.getElementById("trendGrouping");
 const customDateFields = document.getElementById("customDateFields");
@@ -63,6 +69,21 @@ const dailyReportTable = document.querySelector("#dailyReportTable tbody");
 const monthlySummary = document.getElementById("monthlySummary");
 const monthlySummaryGrid = document.getElementById("monthlySummaryGrid");
 const demographicsSection = document.getElementById("demographics");
+const payoutsSection = document.getElementById("payoutsSection");
+const unpaidAgeFilter = document.getElementById("unpaidAgeFilter");
+const payoutTotalBookings = document.getElementById("payoutTotalBookings");
+const payoutPaidBookings = document.getElementById("payoutPaidBookings");
+const payoutUnpaidBookings = document.getElementById("payoutUnpaidBookings");
+const payoutAdjustedBookings = document.getElementById("payoutAdjustedBookings");
+const payoutLatestMonth = document.getElementById("payoutLatestMonth");
+const payoutTotalLabel = document.getElementById("payoutTotalLabel");
+const payoutTotalMeta = document.getElementById("payoutTotalMeta");
+const payoutPaidLabel = document.getElementById("payoutPaidLabel");
+const payoutPaidMeta = document.getElementById("payoutPaidMeta");
+const payoutUnpaidLabel = document.getElementById("payoutUnpaidLabel");
+const payoutUnpaidMeta = document.getElementById("payoutUnpaidMeta");
+const payoutAdjustedLabel = document.getElementById("payoutAdjustedLabel");
+const payoutMetricButtons = document.querySelectorAll("[data-payout-metric]");
 const countryReachValue = document.getElementById("countryReachValue");
 const topCountryValue = document.getElementById("topCountryValue");
 const topCountryMeta = document.getElementById("topCountryMeta");
@@ -207,6 +228,34 @@ document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
 });
 
 comparisonMode.addEventListener("change", refreshDashboardFromStoredData);
+unpaidAgeFilter.addEventListener("change", refreshDashboardFromStoredData);
+
+viewTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextView = button.dataset.view;
+
+    if (!nextView || nextView === activeDashboardView) {
+      return;
+    }
+
+    activeDashboardView = nextView;
+    syncDashboardView();
+  });
+});
+
+payoutMetricButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextMetric = button.dataset.payoutMetric;
+
+    if (!nextMetric || nextMetric === selectedPayoutMetric) {
+      return;
+    }
+
+    selectedPayoutMetric = nextMetric;
+    syncPayoutMetricToggle();
+    refreshDashboardFromStoredData();
+  });
+});
 
 mapMetricButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -288,6 +337,17 @@ function openDatabase() {
           keyPath: "id",
         });
       }
+
+      if (!database.objectStoreNames.contains("billingReports")) {
+        const billingStore = database.createObjectStore("billingReports", {
+          keyPath: "id",
+        });
+
+        billingStore.createIndex("reportMonth", "reportMonth");
+        billingStore.createIndex("orderId", "orderId");
+        billingStore.createIndex("ticketId", "ticketId");
+        billingStore.createIndex("bookingNumber", "bookingNumber");
+      }
     };
   });
 }
@@ -307,7 +367,18 @@ function parseCsvFile(file) {
             );
           }
 
-          await importRows(file.name, results.data);
+          const rows = results.data;
+
+          if (isBillingReportRows(rows)) {
+            await importBillingRows(file.name, rows);
+          } else if (isTicketReportRows(rows)) {
+            await importRows(file.name, rows);
+          } else {
+            throw new Error(
+              "Unsupported CSV format. This file does not look like a ticket report or billing report export.",
+            );
+          }
+
           await refreshDashboardFromStoredData();
           resolve();
         } catch (error) {
@@ -369,6 +440,7 @@ async function importRows(fileName, rows) {
     id: `import-${Date.now()}`,
     fileName,
     importedAt,
+    importType: "ticket",
     rowsFound: rows.length,
     rowsAdded,
     duplicateRowsSkipped,
@@ -381,6 +453,51 @@ async function importRows(fileName, rows) {
   await waitForTransaction(transaction);
 
   fileNameEl.textContent = `Imported: ${fileName} | New rows: ${rowsAdded.toLocaleString()} | Duplicates skipped: ${duplicateRowsSkipped.toLocaleString()}`;
+}
+
+async function importBillingRows(fileName, rows) {
+  const existingIds = await getAllBillingReportIds();
+  const billingRows = rows.map((row) => normalizeBillingRow(fileName, row));
+
+  let rowsAdded = 0;
+  let duplicateRowsSkipped = 0;
+
+  const transaction = db.transaction(["billingReports", "imports"], "readwrite");
+  const billingStore = transaction.objectStore("billingReports");
+  const importStore = transaction.objectStore("imports");
+
+  for (const item of billingRows) {
+    if (!item.id) {
+      continue;
+    }
+
+    if (existingIds.has(item.id)) {
+      duplicateRowsSkipped += 1;
+      continue;
+    }
+
+    existingIds.add(item.id);
+    billingStore.add(item);
+    rowsAdded += 1;
+  }
+
+  importStore.add({
+    id: `billing-import-${Date.now()}`,
+    fileName,
+    importedAt: new Date().toISOString(),
+    importType: "billing",
+    reportMonth: getBillingReportMonth(rows),
+    rowsFound: rows.length,
+    rowsAdded,
+    duplicateRowsSkipped,
+  });
+
+  await waitForTransaction(transaction);
+
+  const reportMonth = getBillingReportMonth(rows) || "Unknown month";
+  fileNameEl.textContent =
+    `Billing imported: ${fileName} | Month: ${reportMonth} | ` +
+    `New rows: ${rowsAdded.toLocaleString()} | Duplicates skipped: ${duplicateRowsSkipped.toLocaleString()}`;
 }
 
 function normalizeRow(fileName, row) {
@@ -450,22 +567,149 @@ function normalizeRow(fileName, row) {
   };
 }
 
+function normalizeBillingRow(fileName, row) {
+  const reportMonth = getField(row, ["Report Month"]);
+  const orderId = getField(row, ["Order ID"]);
+  const ticketId = getField(row, ["Ticket ID"]);
+  const bookingNumber = getField(row, ["Booking Number"]);
+  const action = getField(row, ["Action"]);
+  const payableCommissionUsd = parseMoney(getField(row, ["Payable Commission Amt"]));
+
+  const id = createDedupeKey([
+    fileName,
+    reportMonth,
+    orderId,
+    ticketId,
+    bookingNumber,
+    action,
+    payableCommissionUsd,
+  ]);
+
+  return {
+    id,
+    sourceFileName: fileName,
+    importedAt: new Date().toISOString(),
+    reportType: getField(row, ["Report Type"]),
+    reportMonth,
+    userId: getField(row, ["User ID"]),
+    affiliateId: getField(row, ["Affiliate ID"]),
+    affiliateName: getField(row, ["Affiliate Name"]),
+    orderId,
+    ticketId,
+    bookingNumber,
+    trackingBase: getField(row, ["Tracking base", "Tracking Base"]),
+    payScheme: getField(row, ["Pay Scheme"]),
+    bookDate: formatIsoDate(parseKlookDate(getField(row, ["Book Date"]))),
+    bookTime: getField(row, ["Book Time"]),
+    participationDate: formatIsoDate(
+      parseKlookDate(getField(row, ["Participation Date"])),
+    ),
+    action,
+    ticketStatus: getField(row, ["Ticket Status"]),
+    refundDate: formatIsoDate(parseKlookDate(getField(row, ["Refund Date"]))),
+    salesAmount: parseMoney(getField(row, ["Sales Amount"])),
+    salesCurrency: parseCurrencyCode(getField(row, ["Sales Amount"])),
+    salesAmountUsd: parseMoney(getField(row, ["Sales Amount(USD)"])),
+    refundedSalesAmount: parseMoney(getField(row, ["Refunded Sales Amount"])),
+    refundedSalesCurrency: parseCurrencyCode(
+      getField(row, ["Refunded Sales Amount"]),
+    ),
+    refundedSalesAmountUsd: parseMoney(
+      getField(row, ["Refunded Sales Amount(USD)"]),
+    ),
+    promoCodeType: getField(row, ["Promo Code Type"]),
+    kreatorPromoCode: getField(row, ["Kreator Promo Code"]),
+    commissionableSalesAmount: parseMoney(
+      getField(row, ["Commissionable Sales Amount"]),
+    ),
+    commissionableSalesCurrency: parseCurrencyCode(
+      getField(row, ["Commissionable Sales Amount"]),
+    ),
+    commissionableSalesAmountUsd: parseMoney(
+      getField(row, ["Commissionable Sales Amount(USD)"]),
+    ),
+    commissionRate: getField(row, ["Commission Rate"]),
+    commissionAmountBillingCurrency: parseMoney(
+      getField(row, ["Commission Amount(Billing Currency)"]),
+    ),
+    commissionBillingCurrency: parseCurrencyCode(
+      getField(row, ["Commission Amount(Billing Currency)"]),
+    ),
+    bonusRate: getField(row, ["Bonus Rate"]),
+    bonusCommissionAmountBillingCurrency: parseMoney(
+      getField(row, ["Bonus Commission Amount(Billing Currency)"]),
+    ),
+    payableCommissionAmt: payableCommissionUsd,
+    payableCommissionCurrency: parseCurrencyCode(
+      getField(row, ["Payable Commission Amt"]),
+    ),
+    partnerParams: getField(row, ["Partner Params"]),
+    activityId: getField(row, ["Activity ID"]),
+    activityName: getField(row, ["Activity Name"]),
+    activityCategory: getField(row, ["Activity Category"]),
+    destination: getField(row, ["Destination"]),
+    platform: getField(row, ["Platform"]),
+    userCountry: getField(row, ["User Country", "User country"]),
+    supplyCategory01: getField(row, ["Supply Category 01"]),
+    supplyCategory02: getField(row, ["Supply Category 02"]),
+    supplyCategory03: getField(row, ["Supply Category 03"]),
+    productType: getField(row, ["Product Type"]),
+    adid: getField(row, ["ADID"]),
+    adTagging: getField(row, ["AD Tagging"]),
+    raw: row,
+  };
+}
+
+function isTicketReportRows(rows) {
+  const firstRow = rows.find((row) => row && Object.keys(row).length > 0) || {};
+
+  return (
+    hasHeader(firstRow, "Action Date") &&
+    hasHeader(firstRow, "Commission Amount") &&
+    hasHeader(firstRow, "Activity Name")
+  );
+}
+
+function isBillingReportRows(rows) {
+  const firstRow = rows.find((row) => row && Object.keys(row).length > 0) || {};
+
+  return (
+    hasHeader(firstRow, "Report Month") &&
+    hasHeader(firstRow, "Payable Commission Amt") &&
+    getField(firstRow, ["Report Type"]) === "Billing"
+  );
+}
+
+function hasHeader(row, headerName) {
+  return Object.prototype.hasOwnProperty.call(row, headerName);
+}
+
+function getBillingReportMonth(rows) {
+  const firstRow = rows.find((row) => row && Object.keys(row).length > 0);
+  return firstRow ? getField(firstRow, ["Report Month"]) : "";
+}
+
 async function refreshDashboardFromStoredData() {
   const allTransactions = await getAllTransactions();
+  const imports = await getAllImports();
+  const billingReports = await getAllBillingReports();
 
   if (!allTransactions.length) {
+    activeDashboardView = "import";
     hideCompatibilityNotice();
     hideDashboardSections();
     return;
   }
 
   if (hasIncompatibleStoredData(allTransactions)) {
+    activeDashboardView = "import";
     showCompatibilityNotice();
     hideDashboardSections();
     return;
   }
 
   hideCompatibilityNotice();
+  details.dataset.hasData = "true";
   const selectedRange = getSelectedDateRange(allTransactions);
   const transactions = filterTransactionsByDateRange(allTransactions);
   const comparisonTransactions =
@@ -479,6 +723,8 @@ async function refreshDashboardFromStoredData() {
 
   const currentMetrics = calculateMetrics(transactions);
   const comparisonMetrics = calculateMetrics(comparisonTransactions);
+  const payoutStatus = buildPayoutStatus(allTransactions, billingReports);
+  const payoutViewData = buildPayoutViewData(allTransactions, payoutStatus);
 
   const netCommission = currentMetrics.netCommission;
   const paymentRows = currentMetrics.paymentRows;
@@ -491,6 +737,7 @@ async function refreshDashboardFromStoredData() {
   avgCommissionPerBookingEl.textContent = formatUsd(avgCommissionPerBooking);
   refundRowsEl.textContent = refundRows.toLocaleString();
   dateRangeEl.textContent = `Date range: ${getDateRangeText(actionDates)}`;
+  billingStatusEl.textContent = getLatestBillingStatusText(imports, payoutStatus);
 
   renderKpiComparison(
     netCommissionCompareEl,
@@ -520,10 +767,12 @@ async function refreshDashboardFromStoredData() {
     "refunds",
   );
 
-  analyticsSection.classList.remove("hidden");
-  summary.classList.remove("hidden");
-  details.classList.remove("hidden");
-  filters.classList.remove("hidden");
+  setSectionVisibility(analyticsSection, true);
+  setSectionVisibility(summary, true);
+  setSectionVisibility(details, true);
+  setSectionVisibility(filters, true);
+  setSectionVisibility(viewTabs, true);
+  setSectionVisibility(importSection, true);
 
   if (!fileNameEl.textContent) {
     fileNameEl.textContent = "Stored dashboard data loaded.";
@@ -552,9 +801,11 @@ async function refreshDashboardFromStoredData() {
   renderTable("topDestinations", buildTopList(transactions, "destination"));
   renderActivityCategories(buildActivityCategoryBreakdown(transactions));
   renderRefundImpactTable(buildRefundImpact(transactions));
-  renderDailyReport(transactions);
-  renderMonthlySummary(transactions, comparisonTransactions);
+  renderDailyReport(allTransactions);
+  renderMonthlySummary(allTransactions, []);
   renderDemographics(buildDemographics(transactions));
+  renderPayouts(payoutViewData, imports);
+  syncDashboardView();
 }
 
 function getAllTransactionIds() {
@@ -1043,6 +1294,7 @@ function renderDemographics(data) {
 
 async function exportBackup() {
   const transactions = await getAllTransactions();
+  const billingReports = await getAllBillingReports();
   const imports = await getAllImports();
 
   const backup = {
@@ -1051,6 +1303,7 @@ async function exportBackup() {
     schemaVersion: DATA_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     transactions,
+    billingReports,
     imports,
   };
 
@@ -1077,6 +1330,441 @@ function getAllImports() {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+function getAllBillingReports() {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction("billingReports", "readonly");
+    const store = transaction.objectStore("billingReports");
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function getLatestBillingStatusText(imports, payoutStatus = null) {
+  const latestBillingImport = getLatestBillingImport(imports);
+
+  if (!latestBillingImport) {
+    return "Billing reports: none imported yet";
+  }
+
+  const reportMonth = latestBillingImport.reportMonth || "Unknown month";
+  if (!payoutStatus) {
+    return `Latest billing month imported: ${reportMonth}`;
+  }
+
+  const { paidOutBookings, totalPaymentBookings, deductionAdjustedBookings } =
+    payoutStatus.summary;
+
+  return (
+    `Latest billing month imported: ${reportMonth} | ` +
+    `Paid bookings matched: ${paidOutBookings.toLocaleString()} / ${totalPaymentBookings.toLocaleString()}`
+    + (deductionAdjustedBookings > 0
+      ? ` | Adjusted by deductions: ${deductionAdjustedBookings.toLocaleString()}`
+      : "")
+  );
+}
+
+function getLatestBillingImport(imports) {
+  return [...imports]
+    .filter(
+      (item) =>
+        item.importType === "billing" ||
+        String(item.id || "").startsWith("billing-import-"),
+    )
+    .sort((a, b) => {
+      const left = String(a.importedAt || "");
+      const right = String(b.importedAt || "");
+      return right.localeCompare(left);
+    })[0];
+}
+
+function buildPayoutStatus(transactions, billingReports) {
+  const bookingSummaries = buildBookingPayoutSummaries(transactions);
+  const billingLookup = buildBillingLookup(billingReports);
+  const byBookingKey = {};
+
+  let matchedPaymentBookings = 0;
+  let paidOutBookings = 0;
+  let unpaidBookings = 0;
+  let deductionAdjustedBookings = 0;
+  let totalPaymentCommissionUsd = 0;
+  let paidOutCommissionUsd = 0;
+  let unpaidCommissionUsd = 0;
+  let deductionAdjustedCommissionUsd = 0;
+
+  bookingSummaries.forEach((booking) => {
+    const match = findBillingMatch(booking, billingLookup);
+    const billingRows = match.rows;
+    const billRows = billingRows.filter((row) => row.action === "Bill");
+    const deductionRows = billingRows.filter(
+      (row) => row.action === "Deduction",
+    );
+    const paidMonths = [
+      ...new Set(billRows.map((row) => row.reportMonth).filter(Boolean)),
+    ].sort();
+    const latestPaidReportMonth = paidMonths.length
+      ? paidMonths[paidMonths.length - 1]
+      : "";
+    const totalPayableCommissionAmt = billingRows.reduce(
+      (sum, row) => sum + (row.payableCommissionAmt || 0),
+      0,
+    );
+    const deductionPayableCommissionAmt = deductionRows.reduce(
+      (sum, row) => sum + (row.payableCommissionAmt || 0),
+      0,
+    );
+
+    const outstandingCommissionUsd = Math.max(booking.netCommissionUsd, 0);
+    totalPaymentCommissionUsd += outstandingCommissionUsd;
+
+    let status = "unpaid";
+
+    if (billRows.length > 0 && deductionRows.length > 0) {
+      status = "paid_adjusted";
+    } else if (billRows.length > 0) {
+      status = "paid";
+    } else if (deductionRows.length > 0) {
+      status = "deduction_only";
+    } else if (outstandingCommissionUsd <= 0) {
+      status = "cleared_refund";
+    }
+
+    if (billingRows.length > 0) {
+      matchedPaymentBookings += 1;
+    }
+
+    if (status === "unpaid") {
+      unpaidBookings += 1;
+    }
+
+    if (billRows.length > 0) {
+      paidOutBookings += 1;
+      paidOutCommissionUsd += totalPayableCommissionAmt;
+    }
+
+    if (deductionRows.length > 0) {
+      deductionAdjustedBookings += 1;
+      deductionAdjustedCommissionUsd += deductionPayableCommissionAmt;
+    }
+
+    if (status === "unpaid") {
+      unpaidCommissionUsd += outstandingCommissionUsd;
+    }
+
+    byBookingKey[booking.key] = {
+      status,
+      matchSource: match.source,
+      billingRows,
+      billRows,
+      deductionRows,
+      paidMonths,
+      latestPaidReportMonth,
+      totalPayableCommissionAmt,
+      outstandingCommissionUsd,
+      payScheme: billingRows[0]?.payScheme || "",
+      ticketStatus: billingRows[0]?.ticketStatus || "",
+    };
+  });
+
+  return {
+    byBookingKey,
+    bookingSummaries,
+    summary: {
+      totalPaymentBookings: bookingSummaries.length,
+      matchedPaymentBookings,
+      paidOutBookings,
+      unpaidBookings,
+      deductionAdjustedBookings,
+      totalPaymentCommissionUsd,
+      paidOutCommissionUsd,
+      unpaidCommissionUsd,
+      deductionAdjustedCommissionUsd,
+    },
+  };
+}
+
+function buildBookingPayoutSummaries(transactions) {
+  const bookings = new Map();
+
+  transactions.forEach((transaction) => {
+    const bookingKey = getTransactionBookingKey(transaction);
+
+    if (!bookings.has(bookingKey)) {
+      bookings.set(bookingKey, {
+        key: bookingKey,
+        ticketId: String(transaction.ticketId || "").trim(),
+        bookingNumber: String(transaction.bookingNumber || "").trim(),
+        orderId: String(transaction.orderId || "").trim(),
+        bookedDate: "",
+        activityName: transaction.activityName || "Unknown",
+        destination: transaction.destination || "Unknown",
+        paymentCount: 0,
+        refundCount: 0,
+        amendmentCount: 0,
+        paymentCommissionUsd: 0,
+        netCommissionUsd: 0,
+      });
+    }
+
+    const booking = bookings.get(bookingKey);
+
+    if (transaction.activityName) {
+      booking.activityName = transaction.activityName;
+    }
+
+    if (transaction.destination) {
+      booking.destination = transaction.destination;
+    }
+
+    booking.netCommissionUsd += transaction.commissionAmountUsd;
+
+    if (transaction.actionType === "Payment") {
+      booking.paymentCount += 1;
+      booking.paymentCommissionUsd += transaction.commissionAmountUsd;
+
+      if (
+        transaction.actionDate &&
+        (!booking.bookedDate || transaction.actionDate < booking.bookedDate)
+      ) {
+        booking.bookedDate = transaction.actionDate;
+      }
+    } else if (!booking.bookedDate && transaction.actionDate) {
+      booking.bookedDate = transaction.actionDate;
+    }
+
+    if (transaction.actionType === "Refund") {
+      booking.refundCount += 1;
+    }
+
+    if (transaction.actionType === "Amendment") {
+      booking.amendmentCount += 1;
+    }
+  });
+
+  return [...bookings.values()].filter((booking) => booking.paymentCount > 0);
+}
+
+function getTransactionBookingKey(transaction) {
+  const ticketId = String(transaction.ticketId || "").trim();
+  const bookingNumber = String(transaction.bookingNumber || "").trim();
+  const orderId = String(transaction.orderId || "").trim();
+
+  if (ticketId) {
+    return `ticket:${ticketId}`;
+  }
+
+  if (bookingNumber) {
+    return `booking:${bookingNumber}`;
+  }
+
+  if (orderId) {
+    return `order:${orderId}`;
+  }
+
+  return `row:${transaction.id}`;
+}
+
+function buildPayoutViewData(transactions, payoutStatus) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const unpaidRows = payoutStatus.bookingSummaries
+    .map((booking) => {
+      const payout = payoutStatus.byBookingKey[booking.key] || {
+        status: "unpaid",
+        payScheme: "",
+      };
+      const bookedDate = parseKlookDate(booking.bookedDate);
+      const ageDays = bookedDate ? getInclusiveDayCount(bookedDate, today) - 1 : 0;
+
+      return {
+        id: booking.key,
+        bookingNumber:
+          booking.bookingNumber || booking.ticketId || booking.orderId || "-",
+        bookedDate: booking.bookedDate,
+        ageDays,
+        activityName: booking.activityName || "Unknown",
+        destination: booking.destination || "Unknown",
+        commissionAmountUsd: Math.max(booking.netCommissionUsd, 0),
+        payScheme: payout.payScheme || "Unknown",
+        status: payout.status,
+      };
+    })
+    .filter((row) => row.status === "unpaid");
+
+  const filteredUnpaidRows = filterUnpaidRowsByAge(
+    unpaidRows,
+    unpaidAgeFilter.value,
+  );
+
+  return {
+    summary: payoutStatus.summary,
+    latestBillingImport: null,
+    unpaidRows,
+    filteredUnpaidRows,
+  };
+}
+
+function filterUnpaidRowsByAge(rows, ageFilter) {
+  if (ageFilter === "all") {
+    return rows.sort((a, b) => b.ageDays - a.ageDays);
+  }
+
+  const threshold = Number(ageFilter);
+
+  if (!Number.isFinite(threshold)) {
+    return rows.sort((a, b) => b.ageDays - a.ageDays);
+  }
+
+  return rows
+    .filter((row) => row.ageDays > threshold)
+    .sort((a, b) => b.ageDays - a.ageDays);
+}
+
+function renderPayouts(data, imports) {
+  const latestBillingImport = getLatestBillingImport(imports);
+  const isCommissionMetric = selectedPayoutMetric === "commission";
+
+  payoutTotalLabel.textContent = isCommissionMetric
+    ? "Total Net Commission"
+    : "Total Payment Bookings";
+  payoutPaidLabel.textContent = isCommissionMetric ? "Paid Out" : "Paid Out";
+  payoutUnpaidLabel.textContent = isCommissionMetric ? "Outstanding" : "Unpaid";
+  payoutAdjustedLabel.textContent = isCommissionMetric ? "Deductions" : "Adjusted";
+
+  payoutTotalBookings.textContent = isCommissionMetric
+    ? formatUsd(data.summary.totalPaymentCommissionUsd)
+    : data.summary.totalPaymentBookings.toLocaleString();
+  payoutPaidBookings.textContent = isCommissionMetric
+    ? formatUsd(data.summary.paidOutCommissionUsd)
+    : data.summary.paidOutBookings.toLocaleString();
+  payoutUnpaidBookings.textContent = isCommissionMetric
+    ? formatUsd(data.summary.unpaidCommissionUsd)
+    : data.summary.unpaidBookings.toLocaleString();
+  payoutAdjustedBookings.textContent = isCommissionMetric
+    ? formatUsd(data.summary.deductionAdjustedCommissionUsd)
+    : data.summary.deductionAdjustedBookings.toLocaleString();
+
+  payoutTotalMeta.textContent = isCommissionMetric
+    ? `${data.summary.totalPaymentBookings.toLocaleString()} payment bookings`
+    : "Imported payment bookings";
+  payoutPaidMeta.textContent = isCommissionMetric
+    ? `${data.summary.paidOutBookings.toLocaleString()} bookings matched to billing`
+    : "Matched to billing report rows";
+  payoutUnpaidMeta.textContent = isCommissionMetric
+    ? `${data.summary.unpaidBookings.toLocaleString()} bookings not yet matched`
+    : "Not yet matched to any billing row";
+  payoutLatestMonth.textContent = latestBillingImport
+    ? `Latest month: ${latestBillingImport.reportMonth || "Unknown"}`
+    : "Latest month: none";
+
+  renderUnpaidBookingsTable(data.filteredUnpaidRows);
+  syncPayoutMetricToggle();
+}
+
+function renderUnpaidBookingsTable(rows) {
+  const tbody = document.querySelector("#unpaidBookingsTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="8" class="empty-row">No unpaid bookings in this filter.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.bookingNumber}</td>
+      <td>${row.bookedDate ? formatShortDate(row.bookedDate) : "-"}</td>
+      <td>${row.ageDays.toLocaleString()}d</td>
+      <td>${row.activityName}</td>
+      <td>${row.destination}</td>
+      <td>${formatUsd(row.commissionAmountUsd)}</td>
+      <td>${row.payScheme}</td>
+      <td>${formatPayoutStatus(row.status)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function formatPayoutStatus(status) {
+  const labels = {
+    unpaid: "Unpaid",
+    paid: "Paid",
+    paid_adjusted: "Paid + Adjusted",
+    deduction_only: "Deduction Only",
+    cleared_refund: "Refund Cleared",
+  };
+
+  return labels[status] || status;
+}
+
+function buildBillingLookup(billingReports) {
+  const lookup = {
+    byTicketId: new Map(),
+    byOrderId: new Map(),
+    byBookingNumber: new Map(),
+  };
+
+  billingReports.forEach((row) => {
+    addBillingLookupEntry(lookup.byTicketId, row.ticketId, row);
+    addBillingLookupEntry(lookup.byOrderId, row.orderId, row);
+    addBillingLookupEntry(lookup.byBookingNumber, row.bookingNumber, row);
+  });
+
+  return lookup;
+}
+
+function addBillingLookupEntry(map, key, row) {
+  const normalizedKey = String(key || "").trim();
+
+  if (!normalizedKey) {
+    return;
+  }
+
+  if (!map.has(normalizedKey)) {
+    map.set(normalizedKey, []);
+  }
+
+  map.get(normalizedKey).push(row);
+}
+
+function findBillingMatch(transaction, billingLookup) {
+  const ticketId = String(transaction.ticketId || "").trim();
+  const orderId = String(transaction.orderId || "").trim();
+  const bookingNumber = String(transaction.bookingNumber || "").trim();
+
+  if (ticketId && billingLookup.byTicketId.has(ticketId)) {
+    return {
+      source: "ticketId",
+      rows: billingLookup.byTicketId.get(ticketId),
+    };
+  }
+
+  if (bookingNumber && billingLookup.byBookingNumber.has(bookingNumber)) {
+    return {
+      source: "bookingNumber",
+      rows: billingLookup.byBookingNumber.get(bookingNumber),
+    };
+  }
+
+  const orderRows = orderId ? billingLookup.byOrderId.get(orderId) || [] : [];
+
+  if (!ticketId && !bookingNumber && orderRows.length === 1) {
+    return {
+      source: "orderId",
+      rows: orderRows,
+    };
+  }
+
+  return {
+    source: "",
+    rows: [],
+  };
 }
 
 async function importBackup(file) {
@@ -1107,12 +1795,19 @@ async function importBackup(file) {
   }
 
   const existingIds = await getAllTransactionIds();
+  const existingBillingIds = await getAllBillingReportIds();
 
   let rowsAdded = 0;
   let duplicatesSkipped = 0;
+  let billingRowsAdded = 0;
+  let billingDuplicatesSkipped = 0;
 
-  const transaction = db.transaction(["transactions", "imports"], "readwrite");
+  const transaction = db.transaction(
+    ["transactions", "billingReports", "imports"],
+    "readwrite",
+  );
   const transactionStore = transaction.objectStore("transactions");
+  const billingStore = transaction.objectStore("billingReports");
   const importStore = transaction.objectStore("imports");
 
   backup.transactions.forEach((item) => {
@@ -1126,6 +1821,19 @@ async function importBackup(file) {
     rowsAdded += 1;
   });
 
+  if (Array.isArray(backup.billingReports)) {
+    backup.billingReports.forEach((item) => {
+      if (existingBillingIds.has(item.id)) {
+        billingDuplicatesSkipped += 1;
+        return;
+      }
+
+      existingBillingIds.add(item.id);
+      billingStore.add(item);
+      billingRowsAdded += 1;
+    });
+  }
+
   if (Array.isArray(backup.imports)) {
     backup.imports.forEach((item) => {
       importStore.put(item);
@@ -1135,22 +1843,37 @@ async function importBackup(file) {
   await waitForTransaction(transaction);
   await refreshDashboardFromStoredData();
 
-  fileNameEl.textContent = `Backup imported: ${rowsAdded.toLocaleString()} rows added | ${duplicatesSkipped.toLocaleString()} duplicates skipped`;
+  fileNameEl.textContent =
+    `Backup imported: ${rowsAdded.toLocaleString()} transaction rows added, ` +
+    `${billingRowsAdded.toLocaleString()} billing rows added | ` +
+    `${(duplicatesSkipped + billingDuplicatesSkipped).toLocaleString()} duplicates skipped`;
 }
 
 function clearAllData() {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(
-      ["transactions", "imports"],
+      ["transactions", "billingReports", "imports"],
       "readwrite",
     );
 
     transaction.objectStore("transactions").clear();
+    transaction.objectStore("billingReports").clear();
     transaction.objectStore("imports").clear();
 
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+function getAllBillingReportIds() {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction("billingReports", "readonly");
+    const store = transaction.objectStore("billingReports");
+    const request = store.getAllKeys();
+
+    request.onsuccess = () => resolve(new Set(request.result));
+    request.onerror = () => reject(request.error);
   });
 }
 
@@ -1178,13 +1901,21 @@ function isCompatibleTransaction(transaction) {
 }
 
 function hideDashboardSections() {
-  summary.classList.add("hidden");
-  details.classList.add("hidden");
-  filters.classList.add("hidden");
-  analyticsSection.classList.add("hidden");
-  dailyReport.classList.add("hidden");
-  monthlySummary.classList.add("hidden");
-  demographicsSection.classList.add("hidden");
+  details.dataset.hasData = details.textContent.trim() ? "true" : "false";
+  dailyReport.dataset.hasData = "false";
+  monthlySummary.dataset.hasData = "false";
+
+  setSectionVisibility(importSection, true);
+  setSectionVisibility(summary, false);
+  setSectionVisibility(details, false);
+  setSectionVisibility(filters, false);
+  setSectionVisibility(viewTabs, true);
+  setSectionVisibility(analyticsSection, false);
+  setSectionVisibility(dailyReport, false);
+  setSectionVisibility(monthlySummary, false);
+  setSectionVisibility(demographicsSection, false);
+  setSectionVisibility(payoutsSection, false);
+  syncDashboardView();
 }
 
 function showCompatibilityNotice() {
@@ -1211,6 +1942,48 @@ function hydrateVersionUi() {
   appVersionBadge.textContent = `v${APP_VERSION}`;
   aboutAppVersion.textContent = `v${APP_VERSION}`;
   aboutSchemaVersion.textContent = String(DATA_SCHEMA_VERSION);
+}
+
+function syncDashboardView() {
+  const isImport = activeDashboardView === "import";
+  const isOverview = activeDashboardView === "overview";
+  const isBookings = activeDashboardView === "bookings";
+  const isPayouts = activeDashboardView === "payouts";
+
+  setSectionVisibility(importSection, isImport);
+  setSectionVisibility(
+    details,
+    isImport && details.dataset.hasData === "true",
+  );
+  setSectionVisibility(filters, isBookings);
+  setSectionVisibility(summary, isBookings);
+  setSectionVisibility(analyticsSection, isBookings);
+  setSectionVisibility(
+    dailyReport,
+    isOverview && dailyReport.dataset.hasData === "true",
+  );
+  setSectionVisibility(
+    monthlySummary,
+    isOverview && monthlySummary.dataset.hasData === "true",
+  );
+  setSectionVisibility(demographicsSection, isBookings);
+  setSectionVisibility(payoutsSection, isPayouts);
+
+  viewTabButtons.forEach((button) => {
+    const isActive = button.dataset.view === activeDashboardView;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function setSectionVisibility(element, isVisible) {
+  element.classList.toggle("hidden", !isVisible);
+
+  if (isVisible) {
+    element.removeAttribute("hidden");
+  } else {
+    element.setAttribute("hidden", "");
+  }
 }
 
 function filterTransactionsByDateRange(transactions) {
@@ -1627,10 +2400,11 @@ function renderDailyReport(transactions) {
       bookings: data.bookings,
     }));
 
-  const days = allDays.slice(-14);
+  const days = allDays.slice(-30);
 
   if (!days.length) {
-    dailyReport.classList.add("hidden");
+    dailyReport.dataset.hasData = "false";
+    setSectionVisibility(dailyReport, false);
     return;
   }
 
@@ -1641,7 +2415,7 @@ function renderDailyReport(transactions) {
   const firstDate = parseKlookDate(days[0].date);
   const lastDate = parseKlookDate(days[days.length - 1].date);
 
-  dailyReportTitle.textContent = `Last 14 Active Days — ${formatDate(firstDate)} through ${formatDate(lastDate)}`;
+  dailyReportTitle.textContent = `Last 30 Active Days — ${formatDate(firstDate)} through ${formatDate(lastDate)}`;
 
   dailyReportTotal.textContent = `Total: ${formatUsd(total)}`;
   dailyReportBookings.textContent = `${totalBookings.toLocaleString()} payment bookings`;
@@ -1663,7 +2437,8 @@ function renderDailyReport(transactions) {
     dailyReportTable.appendChild(row);
   });
 
-  dailyReport.classList.remove("hidden");
+  dailyReport.dataset.hasData = "true";
+  setSectionVisibility(dailyReport, activeDashboardView === "overview");
 }
 
 function formatShortDate(value) {
@@ -1685,7 +2460,7 @@ function renderMonthlySummary(transactions, comparisonTransactions = []) {
 
   const months = Object.entries(map)
     .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, 6);
+    .slice(0, 12);
 
   monthlySummaryGrid.innerHTML = "";
 
@@ -1722,7 +2497,11 @@ function renderMonthlySummary(transactions, comparisonTransactions = []) {
     monthlySummaryGrid.appendChild(card);
   });
 
-  monthlySummary.classList.toggle("hidden", months.length === 0);
+  monthlySummary.dataset.hasData = months.length > 0 ? "true" : "false";
+  setSectionVisibility(
+    monthlySummary,
+    months.length > 0 && activeDashboardView === "overview",
+  );
 }
 
 function buildMonthlySummaryMap(transactions) {
@@ -2232,6 +3011,14 @@ function toIso3CountryCode(code) {
 function syncCountryMapMetricToggle() {
   mapMetricButtons.forEach((button) => {
     const isActive = button.dataset.mapMetric === selectedCountryMapMetric;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function syncPayoutMetricToggle() {
+  payoutMetricButtons.forEach((button) => {
+    const isActive = button.dataset.payoutMetric === selectedPayoutMetric;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });

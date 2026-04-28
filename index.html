@@ -197,30 +197,68 @@
         </div>
       </div>
 
-      <div class="intro-grid">
-        <section id="dropZone" class="drop-zone">
-          <h2>Drop CSV file here</h2>
-          <p>or click to choose a file</p>
-          <input id="fileInput" type="file" accept=".csv" hidden />
-        </section>
+      <section id="viewTabs" class="view-tabs hidden">
+        <button
+          id="importTabBtn"
+          class="view-tab-btn"
+          type="button"
+          data-view="import"
+        >
+          Import
+        </button>
+        <button
+          id="overviewTabBtn"
+          class="view-tab-btn active"
+          type="button"
+          data-view="overview"
+        >
+          Overview
+        </button>
+        <button
+          id="bookingsTabBtn"
+          class="view-tab-btn"
+          type="button"
+          data-view="bookings"
+        >
+          Bookings
+        </button>
+        <button
+          id="payoutsTabBtn"
+          class="view-tab-btn"
+          type="button"
+          data-view="payouts"
+        >
+          Payouts
+        </button>
+      </section>
 
-        <section id="details" class="details hidden">
-          <h2>Import Preview</h2>
-          <p id="fileName"></p>
-          <p id="dateRange"></p>
-        </section>
-      </div>
+      <section id="importSection" class="import-section hidden">
+        <div class="intro-grid">
+          <section id="dropZone" class="drop-zone">
+            <h2>Drop CSV file here</h2>
+            <p>or click to choose a file</p>
+            <input id="fileInput" type="file" accept=".csv" hidden />
+          </section>
 
-      <section id="compatibilityNotice" class="compatibility-notice hidden">
-        <h2>Data Re-Import Required</h2>
-        <p id="compatibilityMessage">
-          Stored dashboard data is from an older version and does not include
-          the fields required for demographics.
-        </p>
-        <p>
-          Clear the saved data, then re-import your CSV exports to use this
-          version.
-        </p>
+          <section id="details" class="details hidden">
+            <h2>Import Status</h2>
+            <p id="fileName"></p>
+            <p id="dateRange"></p>
+            <p id="billingStatus"></p>
+          </section>
+        </div>
+
+        <section id="compatibilityNotice" class="compatibility-notice hidden">
+          <h2>Data Re-Import Required</h2>
+          <p id="compatibilityMessage">
+            Stored dashboard data is from an older version and does not include
+            the fields required for demographics.
+          </p>
+          <p>
+            Clear the saved data, then re-import your CSV exports to use this
+            version.
+          </p>
+        </section>
       </section>
 
       <section id="dailyReport" class="daily-report hidden">
@@ -606,6 +644,96 @@
                   <th>Currency</th>
                   <th>Bookings</th>
                   <th>Sales Total</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="payoutsSection" class="payouts hidden">
+        <div class="card-header-row payout-header-row">
+          <div class="section-heading">
+            <h2>Payout Tracking</h2>
+            <p>
+              Billing-match status for payment bookings, including unpaid aging.
+            </p>
+          </div>
+
+          <div
+            class="metric-toggle"
+            role="tablist"
+            aria-label="Payout metric"
+          >
+            <button
+              id="payoutMetricBookings"
+              class="metric-toggle-btn"
+              type="button"
+              data-payout-metric="bookings"
+            >
+              Bookings
+            </button>
+            <button
+              id="payoutMetricCommission"
+              class="metric-toggle-btn active"
+              type="button"
+              data-payout-metric="commission"
+            >
+              Commission
+            </button>
+          </div>
+        </div>
+
+        <div class="payout-kpis">
+          <div class="demographic-card">
+            <span id="payoutTotalLabel" class="label">Total Net Commission</span>
+            <strong id="payoutTotalBookings">0</strong>
+            <small id="payoutTotalMeta">Imported payment bookings</small>
+          </div>
+          <div class="demographic-card">
+            <span id="payoutPaidLabel" class="label">Paid Out</span>
+            <strong id="payoutPaidBookings">0</strong>
+            <small id="payoutPaidMeta">Matched to billing report rows</small>
+          </div>
+          <div class="demographic-card">
+            <span id="payoutUnpaidLabel" class="label">Unpaid</span>
+            <strong id="payoutUnpaidBookings">0</strong>
+            <small id="payoutUnpaidMeta">Not yet matched to any billing row</small>
+          </div>
+          <div class="demographic-card">
+            <span id="payoutAdjustedLabel" class="label">Adjusted</span>
+            <strong id="payoutAdjustedBookings">0</strong>
+            <small id="payoutLatestMonth">Latest month: none</small>
+          </div>
+        </div>
+
+        <section id="payoutFilters" class="filters payout-filters">
+          <div class="filter-field">
+            <label for="unpaidAgeFilter">Unpaid Age Filter</label>
+            <select id="unpaidAgeFilter">
+              <option value="all">All Unpaid</option>
+              <option value="30">Older Than 30 Days</option>
+              <option value="90">Older Than 90 Days</option>
+              <option value="120">Older Than 120 Days</option>
+            </select>
+          </div>
+        </section>
+
+        <div class="table-card">
+          <h3>Unpaid Bookings</h3>
+          <div class="payout-table-wrap">
+            <table id="unpaidBookingsTable">
+              <thead>
+                <tr>
+                  <th>Booking</th>
+                  <th>Booked</th>
+                  <th>Age</th>
+                  <th>Activity</th>
+                  <th>Destination</th>
+                  <th>Commission</th>
+                  <th>Pay Scheme</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody></tbody>
