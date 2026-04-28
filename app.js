@@ -34,6 +34,9 @@ const exportBackupBtn = document.getElementById("exportBackupBtn");
 const importBackupBtn = document.getElementById("importBackupBtn");
 const clearDataBtn = document.getElementById("clearDataBtn");
 const backupInput = document.getElementById("backupInput");
+const aboutBtn = document.getElementById("aboutBtn");
+const aboutModal = document.getElementById("aboutModal");
+const closeAboutBtn = document.getElementById("closeAboutBtn");
 
 const filters = document.getElementById("filters");
 const dateRangeFilter = document.getElementById("dateRangeFilter");
@@ -111,9 +114,25 @@ dropZone.addEventListener("drop", async (event) => {
 });
 
 exportBackupBtn.addEventListener("click", exportBackup);
+aboutBtn.addEventListener("click", openAboutModal);
+closeAboutBtn.addEventListener("click", closeAboutModal);
 
 importBackupBtn.addEventListener("click", () => {
   backupInput.click();
+});
+
+aboutModal.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
+    closeAboutModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !aboutModal.classList.contains("hidden")) {
+    closeAboutModal();
+  }
 });
 
 backupInput.addEventListener("change", async (event) => {
@@ -950,6 +969,16 @@ function showCompatibilityNotice() {
 
 function hideCompatibilityNotice() {
   compatibilityNotice.classList.add("hidden");
+}
+
+function openAboutModal() {
+  aboutModal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+}
+
+function closeAboutModal() {
+  aboutModal.classList.add("hidden");
+  document.body.classList.remove("modal-open");
 }
 
 function filterTransactionsByDateRange(transactions) {

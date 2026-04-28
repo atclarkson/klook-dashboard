@@ -80,6 +80,7 @@
             <p>Private local dashboard for commission tracking</p>
           </div>
           <div class="header-actions">
+            <button id="aboutBtn" type="button">About</button>
             <button id="exportBackupBtn" type="button">Export Backup</button>
             <button id="importBackupBtn" type="button">Import Backup</button>
             <button id="clearDataBtn" type="button" class="danger">
@@ -89,6 +90,97 @@
           </div>
         </div>
       </header>
+
+      <div id="aboutModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+        <div class="modal-backdrop" data-close-modal="true"></div>
+        <div class="modal-panel">
+          <div class="modal-header">
+            <div>
+              <h2 id="aboutTitle">About This Dashboard</h2>
+              <p>What it is, what it is not, and how your data is handled.</p>
+            </div>
+            <button id="closeAboutBtn" type="button" class="modal-close" aria-label="Close about dialog">
+              Close
+            </button>
+          </div>
+
+          <div class="modal-content">
+            <section>
+              <h3>What This Is</h3>
+              <p>
+                This is an unofficial local dashboard made by affiliates who were
+                tired of the Klook Kreator dashboard experience and wanted better
+                visibility into commission, refunds, destinations, and audience
+                signals.
+              </p>
+            </section>
+
+            <section>
+              <h3>What This Is Not</h3>
+              <p>
+                This is not a Klook product. It is not endorsed, supported, or
+                maintained by Klook. It is not official reporting software, tax
+                software, accounting software, or financial advice.
+              </p>
+            </section>
+
+            <section>
+              <h3>Privacy And Data Handling</h3>
+              <p>
+                Your CSV imports, backup files, and derived dashboard data stay
+                on your computer. The app stores imported data locally in your
+                browser using IndexedDB.
+              </p>
+              <p>
+                This dashboard does not upload your booking data, customer data,
+                or reports to any server controlled by this project. There is no
+                backend for this app.
+              </p>
+            </section>
+
+            <section>
+              <h3>Internet Requests</h3>
+              <p>
+                The dashboard currently loads a few JavaScript libraries from
+                CDNs so the app can run in the browser:
+              </p>
+              <ul>
+                <li><code>cdn.jsdelivr.net</code> for Papa Parse, used to read CSV files in the browser.</li>
+                <li><code>cdn.jsdelivr.net</code> for Chart.js, used for charts.</li>
+                <li><code>cdn.plot.ly</code> for Plotly, used for the country map.</li>
+              </ul>
+              <p>
+                Those requests fetch library files only. The dashboard code does
+                not send your imported CSV contents or saved dashboard data to
+                those CDNs.
+              </p>
+              <p>
+                If you want zero third-party network requests at runtime, these
+                libraries can be vendored locally instead of loaded from CDNs.
+              </p>
+            </section>
+
+            <section>
+              <h3>Warranty And Risk</h3>
+              <p>
+                This project is provided as-is, with no warranty. Use it at your
+                own risk. Always cross-check important numbers against Klook’s
+                own reporting before relying on them.
+              </p>
+            </section>
+
+            <section>
+              <h3>License</h3>
+              <p>
+                The project is released under <code>CC BY-NC 4.0</code>. That
+                keeps it free for non-commercial use, sharing, and modification,
+                but the license still requires attribution because that is how
+                Creative Commons non-commercial licenses work.
+              </p>
+            </section>
+          </div>
+        </div>
+      </div>
 
       <section id="dropZone" class="drop-zone">
         <h2>Drop CSV file here</h2>

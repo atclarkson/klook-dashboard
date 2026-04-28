@@ -1,220 +1,175 @@
 # Klook Commission Dashboard
 
-A lightweight, local-only dashboard for analyzing Klook affiliate commission data.
+An unofficial local dashboard for exploring Klook affiliate CSV exports.
 
-This tool helps you understand:
-
-* How much commission you are actually earning (net, after refunds)
-* What activities and destinations perform best
-* Where refunds are hurting performance
-* Daily, weekly, and monthly trends
-
-No accounts, no servers, no uploads. Everything runs locally in your browser.
-
----
+This project was made by affiliates who were tired of the Klook Kreator dashboard and wanted something clearer for commission, refunds, destinations, audience origin, and promo-code performance.
 
 ## What This Is
 
-This is a simple HTML + JavaScript dashboard that:
+This dashboard:
 
-* Parses Klook ticket report CSV files
-* Stores data locally in your browser
-* Builds charts, summaries, and tables
-* Lets you explore your performance over time
+- imports Klook ticket report CSV files
+- stores the data locally in your browser
+- shows commission trends, KPI cards, refunds, destinations, demographics, promo-code usage, and country-level audience views
+- runs as a static frontend with no project backend
 
-It is designed for creators, affiliates, and anyone using Klook tracking.
+## What This Is Not
 
----
+This project is not:
 
-## What This Is NOT
+- an official Klook product
+- affiliated with Klook
+- endorsed by Klook
+- supported by Klook
+- accounting, tax, or legal software
+- guaranteed to be accurate
 
-* Not an official Klook product
-* Not affiliated with Klook in any way
-* Not guaranteed to be accurate
-* Not production-grade financial software
-
-Use at your own risk.
-
----
+Use it at your own risk and cross-check important figures against Klook’s own reporting.
 
 ## Privacy
 
-This dashboard is:
+Your imported CSVs and derived dashboard data stay on your computer.
 
-* 100% local
-* No backend
-* No APIs
-* No tracking
-* No data sent anywhere
+The app stores data locally in your browser using IndexedDB. It does not contain an app backend and it does not intentionally upload your imported CSV contents or saved dashboard data anywhere.
 
-Your data:
+### Local Storage
 
-* Never leaves your computer
-* Is stored only in your browser (IndexedDB)
-* Can be cleared at any time
+Data is stored in:
 
----
+- `IndexedDB` in your browser
 
-## How to Use (Step-by-Step)
+This means:
 
-### 1. Download the dashboard
+- data persists between sessions
+- data is tied to the browser profile you use
+- clearing site data or browser storage can erase it
 
-Click the green **Code** button on GitHub, then:
+## Internet Requests
 
-```text
-Download ZIP
-```
+The dashboard currently loads a few JavaScript libraries from CDNs at page load:
 
-Unzip it somewhere on your computer.
+- `https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js`
+  Used to parse CSV files in the browser.
+- `https://cdn.jsdelivr.net/npm/chart.js`
+  Used to render charts.
+- `https://cdn.plot.ly/plotly-2.35.2.min.js`
+  Used to render the country map.
 
----
+These network requests download library files only. The dashboard code does not send your imported report data to those CDNs.
 
-### 2. Open the dashboard
+If you want to remove third-party runtime requests entirely, these libraries can be vendored locally and loaded from the repo instead.
 
-Double-click:
+## Features
 
-```text
-index.html
-```
+- drag-and-drop CSV import
+- duplicate detection
+- net commission tracking
+- bookings, refunds, and average commission KPIs
+- daily, weekly, and monthly trend views
+- previous-period comparisons
+- top activities and destinations
+- refund impact analysis
+- monthly summary cards
+- demographics and acquisition section
+- promo-code and tracking-base breakdowns
+- country-origin map
+- local JSON backup and restore
 
-OR (recommended for best stability):
+## How To Use
 
-Open a terminal in the folder and run:
+### 1. Export Data From Klook
+
+From the Klook Kreator reporting area, export the ticket report CSV for the date range you want.
+
+If you want full history, export multiple date ranges and import them one by one.
+
+### 2. Open The Dashboard
+
+You can either:
+
+- open `index.html` directly in a browser
+- or serve the folder locally, for example:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then open:
+Then visit:
 
 ```text
 http://localhost:8080
 ```
 
----
+### 3. Import CSV Files
 
-### 3. Export your data from Klook
+Drop CSV files onto the dashboard or click the upload area.
 
-Go to:
+The app will:
 
-```text
-Klook → Performance → Ticket Report
-```
+- parse the file in-browser
+- skip duplicate rows
+- store the imported transactions locally
 
-Then:
+### 4. Re-Import After Breaking Schema Changes
 
-1. Select a date range (max 6 months)
-2. Click **Export**
-3. Download the CSV
+This project now includes schema checks for stored data.
 
-Repeat this if needed (for multiple 6-month ranges)
+If you have older saved data from a previous version and the app says re-import is required:
 
----
+1. export a backup if you want a copy
+2. clear saved data
+3. re-import your CSV exports
 
-### 4. Load your data
+Older stored data may not contain newer fields needed for features like demographics.
 
-Drag and drop the CSV file onto the dashboard.
+## Data Notes
 
-You can:
+The dashboard is only as good as the CSV fields Klook provides.
 
-* Upload multiple files
-* Re-upload the same file safely (duplicates are skipped)
-* Build a full historical dataset over time
+Examples of fields currently used include:
 
----
+- action and action date
+- commission amount
+- destination
+- platform
+- user country
+- tracking base
+- promo code type
+- Kreator promo code
+- activity and package details
 
-## Features
+Some things people might expect, like exact user city or detailed language data, may not exist in the CSV.
 
-* Drag-and-drop CSV import
-* Duplicate detection
-* Net commission calculation (includes refunds and amendments)
-* Daily, weekly, monthly trends
-* Date filters and custom ranges
-* Refund impact analysis
-* Top activities and destinations
-* Monthly summary cards
-* Backup / restore system (JSON export/import)
+## Project Structure
 
----
-
-## Data Storage
-
-Data is stored using:
-
-```text
-IndexedDB (your browser)
-```
-
-This means:
-
-* Data persists between sessions
-* It is tied to your browser + file location
-* Clearing browser data will erase it
-
----
+- [index.html](/Users/adamclarkson/dev/klook-dashboard/index.html)
+  App structure and sections
+- [styles.css](/Users/adamclarkson/dev/klook-dashboard/styles.css)
+  UI styling
+- [app.js](/Users/adamclarkson/dev/klook-dashboard/app.js)
+  Import logic, storage, calculations, and rendering
 
 ## Known Limitations
 
-* Early beta
-* Some edge cases may not be handled correctly
-* CSV format changes from Klook may break parsing
-* Timezone/date inconsistencies may exist
-* Refund handling depends on Klook data accuracy
-
-Always cross-check with Klook reports if numbers matter.
-
----
-
-## Future Plans / Roadmap
-
-* Monthly billing report support (final payout vs estimated)
-* Searchable transaction table
-* Better refund analytics (per destination, per activity)
-* Trend comparisons (month-over-month)
-* Dynamic month filters (select March, April, etc.)
-* Improved UI polish
-* Export to CSV / PDF
-* Mobile layout improvements
-
----
+- depends on Klook CSV structure staying consistent
+- browser local storage can be cleared or lost
+- numbers may differ from other dashboards depending on filters and refunds
+- map coverage depends on clean country codes in the source CSV
+- CDN-hosted libraries mean first-load network access is currently required unless vendored locally
 
 ## License
 
-Planned license:
+This project is licensed under `CC BY-NC 4.0`.
 
-```text
-Creative Commons Attribution-ShareAlike (CC BY-SA)
-```
+That means, in short:
 
-You are free to:
+- you can use it
+- you can modify it
+- you can share it
+- you cannot use it commercially
 
-* Use
-* Modify
-* Share
-
-As long as you:
-
-* Credit the original work
-* Share improvements under the same license
-
----
+Creative Commons non-commercial licenses still require attribution. See [LICENSE.md](/Users/adamclarkson/dev/klook-dashboard/LICENSE.md).
 
 ## Disclaimer
 
-This project is:
-
-* Not affiliated with Klook
-* Not endorsed by Klook
-* Not guaranteed to be accurate
-
-All data interpretation is your responsibility.
-
----
-
-## Final Note
-
-This was built to scratch a very specific itch:
-
-> “What am I actually making after refunds, and what’s working?”
-
-If it helps you, great. If not, fork it and make it better.
+This project is provided as-is, without warranty of any kind. The authors are not responsible for errors, losses, or decisions made from this dashboard’s output.
