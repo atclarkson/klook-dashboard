@@ -538,6 +538,8 @@ function normalizeRow(fileName, row) {
   const orderId = getField(row, ["Order ID"]);
   const ticketId = getField(row, ["Ticket ID"]);
   const bookingNumber = getField(row, ["Booking Number"]);
+  const destination = getField(row, ["Destination"]);
+  const destinationParts = splitDestination(destination);
 
   const id = createDedupeKey([
     ticketId,
@@ -579,7 +581,9 @@ function normalizeRow(fileName, row) {
     partnerParams: getField(row, ["Partner Params"]),
     activityId: getField(row, ["Activity ID"]),
     activityName: getField(row, ["Activity Name"]),
-    destination: getField(row, ["Destination"]),
+    destination,
+    destinationCountry: destinationParts.country,
+    destinationRegion: destinationParts.region,
     packageName: getField(row, ["Package Name"]),
     activityCategory: getField(row, ["Activity Category"]),
     platform: getField(row, ["Platform"]),
@@ -603,6 +607,8 @@ function normalizeBillingRow(fileName, row) {
   const bookingNumber = getField(row, ["Booking Number"]);
   const action = getField(row, ["Action"]);
   const payableCommissionUsd = parseMoney(getField(row, ["Payable Commission Amt"]));
+  const destination = getField(row, ["Destination"]);
+  const destinationParts = splitDestination(destination);
 
   const id = createDedupeKey([
     fileName,
@@ -676,7 +682,9 @@ function normalizeBillingRow(fileName, row) {
     activityId: getField(row, ["Activity ID"]),
     activityName: getField(row, ["Activity Name"]),
     activityCategory: getField(row, ["Activity Category"]),
-    destination: getField(row, ["Destination"]),
+    destination,
+    destinationCountry: destinationParts.country,
+    destinationRegion: destinationParts.region,
     platform: getField(row, ["Platform"]),
     userCountry: getField(row, ["User Country", "User country"]),
     supplyCategory01: getField(row, ["Supply Category 01"]),
@@ -828,6 +836,7 @@ async function refreshDashboardFromStoredData() {
 
   renderTable("topActivities", buildTopList(transactions, "activityName"));
   renderTable("topDestinations", buildTopList(transactions, "destination"));
+  renderDestinationCountryTable(buildTopDestinationCountries(transactions));
   renderActivityCategories(buildActivityCategoryBreakdown(transactions));
   renderRefundImpactTable(buildRefundImpact(transactions));
   renderDailyReport(allTransactions);
@@ -1087,6 +1096,59 @@ function buildTopList(transactions, field, limit = 8) {
     .slice(0, limit);
 }
 
+function buildTopDestinationCountries(transactions, limit = 8) {
+  const destinationCountryMap = {};
+
+  transactions.forEach((transaction) => {
+    if (transaction.actionType !== "Payment") {
+      return;
+    }
+
+    const destinationParts = splitDestination(
+      transaction.destination,
+      transaction.destinationCountry,
+      transaction.destinationRegion,
+    );
+    const destinationCountry = normalizeDimensionValue(
+      destinationParts.country,
+      "Unknown",
+    );
+
+    if (!destinationCountryMap[destinationCountry]) {
+      destinationCountryMap[destinationCountry] = {
+        name: destinationCountry,
+        bookings: 0,
+      };
+    }
+
+    destinationCountryMap[destinationCountry].bookings += 1;
+  });
+
+  return Object.values(destinationCountryMap)
+    .sort((a, b) => b.bookings - a.bookings)
+    .slice(0, limit);
+}
+
+function renderDestinationCountryTable(rows) {
+  const tbody = document.querySelector("#topDestinationCountries tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="2" class="empty-row">No destination country data in this range.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td>${row.bookings.toLocaleString()}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 function renderTable(elementId, data) {
   const tbody = document.querySelector(`#${elementId} tbody`);
   tbody.innerHTML = "";
@@ -1302,7 +1364,9 @@ function renderDemographics(data) {
     : 0;
 
   countryReachValue.textContent = data.countryReach.toLocaleString();
-  topCountryValue.textContent = topCountry ? topCountry.name : "-";
+  topCountryValue.textContent = topCountry
+    ? formatCountryLabel(topCountry.code, topCountry.name)
+    : "-";
   topCountryMeta.textContent = topCountry
     ? `${topCountry.bookings.toLocaleString()} bookings`
     : "0 bookings";
@@ -2839,9 +2903,10 @@ function renderCountryTable(rows) {
   }
 
   rows.forEach((row) => {
+    const countryLabel = formatCountryLabel(row.code, row.name);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.name}</td>
+      <td>${countryLabel}</td>
       <td>${row.bookings.toLocaleString()}</td>
       <td>${formatUsd(row.netCommission)}</td>
       <td>${formatUsd(row.avgCommissionPerBooking)}</td>
@@ -2862,9 +2927,10 @@ function renderCountryRankingTable(rows) {
   }
 
   rows.forEach((row) => {
+    const countryLabel = formatCountryLabel(row.code, row.name);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.name}</td>
+      <td>${countryLabel}</td>
       <td>${row.bookings.toLocaleString()}</td>
       <td>${formatUsd(row.netCommission)}</td>
       <td>${formatUsd(row.avgCommissionPerBooking)}</td>
@@ -3034,6 +3100,38 @@ function normalizeCountryCode(value) {
   return /^[A-Z]{2}$/.test(normalized) ? normalized : "";
 }
 
+function splitDestination(
+  destination,
+  fallbackCountry = "",
+  fallbackRegion = "",
+) {
+  const normalizedDestination = String(destination || "").trim();
+
+  if (!normalizedDestination) {
+    return {
+      country: normalizeDimensionValue(fallbackCountry, ""),
+      region: normalizeDimensionValue(fallbackRegion, ""),
+    };
+  }
+
+  const separatorIndex = normalizedDestination.indexOf(" - ");
+
+  if (separatorIndex === -1) {
+    return {
+      country: normalizeDimensionValue(
+        fallbackCountry || normalizedDestination,
+        "",
+      ),
+      region: normalizeDimensionValue(fallbackRegion, ""),
+    };
+  }
+
+  return {
+    country: normalizedDestination.slice(0, separatorIndex).trim(),
+    region: normalizedDestination.slice(separatorIndex + 3).trim(),
+  };
+}
+
 function formatCountryName(value) {
   if (!value || value === "Unknown") {
     return "Unknown";
@@ -3045,6 +3143,23 @@ function formatCountryName(value) {
   } catch {
     return value;
   }
+}
+
+function formatCountryLabel(code, fallbackName) {
+  const flag = countryCodeToEmoji(code);
+  return flag ? `${flag} ${fallbackName}` : fallbackName;
+}
+
+function countryCodeToEmoji(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+
+  if (!/^[A-Z]{2}$/.test(normalized)) {
+    return "";
+  }
+
+  return String.fromCodePoint(
+    ...[...normalized].map((char) => 127397 + char.charCodeAt(0)),
+  );
 }
 
 function toIso3CountryCode(code) {

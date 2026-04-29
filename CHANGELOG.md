@@ -17,6 +17,10 @@ When releasing:
 
 ## Unreleased
 
+- added country-flag emoji to the `Users by Country` and `Country Ranking` tables when ISO country codes are available
+- extended country-flag emoji to the `Top User Country` KPI for consistency
+- split destinations into derived `Country` and `Region` parts and added a `Top Destination Countries` table in the bookings analytics area
+
 ## v2.1.1
 
 - added import-tab guidance for transaction exports, overlap-safe reimports, and required monthly billing-report imports for payout tracking

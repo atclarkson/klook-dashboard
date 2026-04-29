@@ -1154,6 +1154,11 @@ td {
   gap: 20px;
 }
 
+.analytics-top-grid {
+  margin-bottom: 20px;
+  align-items: start;
+}
+
 .compact-table-card table th,
 .compact-table-card table td,
 #userCountryTable th,
