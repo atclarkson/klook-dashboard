@@ -215,6 +215,36 @@
         </div>
       </div>
 
+      <div
+        id="bookingDetailModal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bookingDetailTitle"
+      >
+        <div class="modal-backdrop" data-close-booking-modal="true"></div>
+        <div class="modal-panel booking-detail-panel">
+          <div class="modal-header">
+            <div>
+              <h2 id="bookingDetailTitle">Booking Details</h2>
+              <p id="bookingDetailSubtitle">
+                Full transaction and billing picture for this booking.
+              </p>
+            </div>
+            <button
+              id="closeBookingDetailBtn"
+              type="button"
+              class="modal-close"
+              aria-label="Close booking detail dialog"
+            >
+              Close
+            </button>
+          </div>
+
+          <div id="bookingDetailContent" class="modal-content"></div>
+        </div>
+      </div>
+
       <section id="viewTabs" class="view-tabs hidden">
         <button
           id="importTabBtn"
@@ -343,6 +373,49 @@
           </table>
         </div>
       </section>
+
+      <section id="recentBookingsSection" class="recent-bookings hidden">
+        <div class="card-header-row recent-bookings-header">
+          <div>
+            <h2>Latest Bookings</h2>
+            <p id="recentBookingsSubtitle">
+              Booking-level view for the most recent booking day.
+            </p>
+          </div>
+
+          <div class="recent-bookings-controls">
+            <div
+              id="recentBookingsDateFilters"
+              class="metric-toggle"
+              role="tablist"
+              aria-label="Latest booking dates"
+            ></div>
+            <div class="filter-field recent-bookings-custom-field">
+              <label for="recentBookingsCustomDate">Custom Day</label>
+              <input id="recentBookingsCustomDate" type="date" />
+            </div>
+          </div>
+        </div>
+
+        <div class="recent-bookings-table-wrap">
+          <table id="recentBookingsTable">
+            <thead>
+              <tr>
+                <th>Booking</th>
+                <th>Booked</th>
+                <th>Participation</th>
+                <th>Activity</th>
+                <th>Destination</th>
+                <th>Commission</th>
+                <th>Pay Scheme</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
       <section id="monthlySummary" class="monthly-summary hidden">
         <h2>Monthly Summary</h2>
         <div id="monthlySummaryGrid" class="monthly-summary-grid"></div>
@@ -391,8 +464,16 @@
           </select>
         </div>
       </section>
-      <!-- KPI Cards -->
-      <section id="summary" class="summary hidden">
+      <section id="bookingsAnalyticsSection" class="bookings-analytics hidden">
+        <div class="section-heading">
+          <h2>Bookings Analytics</h2>
+          <p>
+            Performance views for bookings, commission, average commission per
+            booking, and refunds.
+          </p>
+        </div>
+
+        <section id="summary" class="summary hidden">
         <div
           class="card kpi-card active"
           data-metric="netCommission"
@@ -439,9 +520,9 @@
           <strong id="refundRows">0</strong>
           <small id="refundRowsCompare" class="comparison-note"></small>
         </div>
-      </section>
+        </section>
 
-      <section class="analytics">
+        <section class="analytics">
         <div class="chart-card">
           <h2 id="trendChartTitle">Net Commission Trend</h2>
           <canvas id="commissionChart"></canvas>
@@ -454,7 +535,7 @@
               <thead>
                 <tr>
                   <th>Activity</th>
-                  <th>Commission</th>
+                  <th id="topActivitiesMetricColumn">Net Commission</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -467,7 +548,7 @@
               <thead>
                 <tr>
                   <th>Destination</th>
-                  <th>Commission</th>
+                  <th id="topDestinationsMetricColumn">Net Commission</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -480,7 +561,7 @@
               <thead>
                 <tr>
                   <th>Country</th>
-                  <th>Bookings</th>
+                  <th id="topDestinationCountriesMetricColumn">Net Commission</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -496,29 +577,6 @@
                 <p id="activityCategorySubtitle" class="section-subtitle">
                   Booking share by activity category in the current filter range
                 </p>
-              </div>
-
-              <div
-                class="metric-toggle"
-                role="tablist"
-                aria-label="Activity category metric"
-              >
-                <button
-                  id="categoryMetricCommission"
-                  class="metric-toggle-btn active"
-                  type="button"
-                  data-category-metric="commission"
-                >
-                  Commission
-                </button>
-                <button
-                  id="categoryMetricBookings"
-                  class="metric-toggle-btn"
-                  type="button"
-                  data-category-metric="bookings"
-                >
-                  Bookings
-                </button>
               </div>
             </div>
             <div class="category-chart-wrap">
@@ -561,6 +619,7 @@
             </table>
           </div>
         </div>
+        </section>
       </section>
 
       <section id="demographics" class="demographics hidden">

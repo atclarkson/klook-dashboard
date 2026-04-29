@@ -17,9 +17,21 @@ When releasing:
 
 ## Unreleased
 
+## v2.1.2
+
 - added country-flag emoji to the `Users by Country` and `Country Ranking` tables when ISO country codes are available
 - extended country-flag emoji to the `Top User Country` KPI for consistency
 - split destinations into derived `Country` and `Region` parts and added a `Top Destination Countries` table in the bookings analytics area
+- wrapped KPI cards, trend, top tables, and category views into a dedicated bookings analytics section
+- made top activities, destinations, destination countries, and category views follow the active KPI metric selection
+- removed the separate commission/bookings selector from the activity category chart so it follows the main KPI selection
+- added a click-through booking detail modal on the `Payouts` page with booking summary, transaction rows, billing rows, metadata, and raw row data
+- loosened the booking detail modal layout and added color-coded payout-status badges for unpaid, paid, adjusted, refunded, and deduction states
+- reworked booking-detail metadata into roomier cards so dense field blocks are easier to scan
+- added an `Overview` bookings-by-day table with quick filters for the latest three calendar days, a custom day picker, and click-through booking status drilldowns
+- aligned the `Overview` custom day picker styling with the main dashboard date inputs
+- redesigned the booking detail modal with clearer grouped sections and added missing booking details such as participants, commission rate, and richer transaction history columns
+- replaced the booking-detail modal’s summary cards with denser key/value tables for easier scanning of booking and payout data
 
 ## v2.1.1
 

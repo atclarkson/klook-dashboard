@@ -2,7 +2,7 @@ const DB_NAME = "klookCommissionDashboard";
 const DB_VERSION = 2;
 // Bump APP_VERSION for user-facing releases.
 // Bump DATA_SCHEMA_VERSION only when stored IndexedDB data becomes incompatible.
-const APP_VERSION = "2.1.1";
+const APP_VERSION = "2.1.2";
 const DATA_SCHEMA_VERSION = 2;
 
 let db = null;
@@ -10,7 +10,6 @@ let chartInstance = null;
 let activityCategoryChartInstance = null;
 let selectedTrendMetric = "netCommission";
 let selectedCountryMapMetric = "commission";
-let selectedActivityCategoryMetric = "commission";
 let selectedPayoutMetric = "commission";
 let activeDashboardView = "overview";
 let refundImpactSort = {
@@ -21,6 +20,12 @@ let unpaidBookingsSort = {
   field: "ageDays",
   direction: "desc",
 };
+let selectedRecentBookingsDate = "";
+let currentDashboardData = {
+  allTransactions: [],
+  billingReports: [],
+  payoutStatus: null,
+};
 
 // Constants
 const dropZone = document.getElementById("dropZone");
@@ -28,6 +33,9 @@ const fileInput = document.getElementById("fileInput");
 const importSection = document.getElementById("importSection");
 
 const summary = document.getElementById("summary");
+const bookingsAnalyticsSection = document.getElementById(
+  "bookingsAnalyticsSection",
+);
 const details = document.getElementById("details");
 const compatibilityNotice = document.getElementById("compatibilityNotice");
 const compatibilityMessage = document.getElementById("compatibilityMessage");
@@ -50,6 +58,11 @@ const backupInput = document.getElementById("backupInput");
 const aboutBtn = document.getElementById("aboutBtn");
 const aboutModal = document.getElementById("aboutModal");
 const closeAboutBtn = document.getElementById("closeAboutBtn");
+const bookingDetailModal = document.getElementById("bookingDetailModal");
+const closeBookingDetailBtn = document.getElementById("closeBookingDetailBtn");
+const bookingDetailContent = document.getElementById("bookingDetailContent");
+const bookingDetailTitle = document.getElementById("bookingDetailTitle");
+const bookingDetailSubtitle = document.getElementById("bookingDetailSubtitle");
 const appVersionBadge = document.getElementById("appVersionBadge");
 const aboutAppVersion = document.getElementById("aboutAppVersion");
 const aboutSchemaVersion = document.getElementById("aboutSchemaVersion");
@@ -69,6 +82,14 @@ const dailyReportTotal = document.getElementById("dailyReportTotal");
 const dailyReportBookings = document.getElementById("dailyReportBookings");
 const dailyReportAverage = document.getElementById("dailyReportAverage");
 const dailyReportTable = document.querySelector("#dailyReportTable tbody");
+const recentBookingsSection = document.getElementById("recentBookingsSection");
+const recentBookingsSubtitle = document.getElementById("recentBookingsSubtitle");
+const recentBookingsDateFilters = document.getElementById(
+  "recentBookingsDateFilters",
+);
+const recentBookingsCustomDate = document.getElementById(
+  "recentBookingsCustomDate",
+);
 
 const monthlySummary = document.getElementById("monthlySummary");
 const monthlySummaryGrid = document.getElementById("monthlySummaryGrid");
@@ -95,11 +116,17 @@ const promoBookingShareValue = document.getElementById("promoBookingShareValue")
 const codeBasedShareValue = document.getElementById("codeBasedShareValue");
 const userCountryMap = document.getElementById("userCountryMap");
 const mapMetricButtons = document.querySelectorAll("[data-map-metric]");
-const categoryMetricButtons = document.querySelectorAll(
-  "[data-category-metric]",
-);
 const activityCategorySubtitle = document.getElementById(
   "activityCategorySubtitle",
+);
+const topActivitiesMetricColumn = document.getElementById(
+  "topActivitiesMetricColumn",
+);
+const topDestinationsMetricColumn = document.getElementById(
+  "topDestinationsMetricColumn",
+);
+const topDestinationCountriesMetricColumn = document.getElementById(
+  "topDestinationCountriesMetricColumn",
 );
 const activityCategoryMetricColumn = document.getElementById(
   "activityCategoryMetricColumn",
@@ -162,6 +189,7 @@ dropZone.addEventListener("drop", async (event) => {
 exportBackupBtn.addEventListener("click", exportBackup);
 aboutBtn.addEventListener("click", openAboutModal);
 closeAboutBtn.addEventListener("click", closeAboutModal);
+closeBookingDetailBtn.addEventListener("click", closeBookingDetailModal);
 
 importBackupBtn.addEventListener("click", () => {
   backupInput.click();
@@ -175,10 +203,48 @@ aboutModal.addEventListener("click", (event) => {
   }
 });
 
+bookingDetailModal.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (
+    target instanceof HTMLElement &&
+    target.dataset.closeBookingModal === "true"
+  ) {
+    closeBookingDetailModal();
+  }
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !aboutModal.classList.contains("hidden")) {
     closeAboutModal();
+    return;
   }
+
+  if (
+    event.key === "Escape" &&
+    !bookingDetailModal.classList.contains("hidden")
+  ) {
+    closeBookingDetailModal();
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const trigger = event.target instanceof Element
+    ? event.target.closest("[data-booking-key]")
+    : null;
+
+  if (!trigger) {
+    return;
+  }
+
+  const bookingKey = trigger.getAttribute("data-booking-key");
+
+  if (!bookingKey) {
+    return;
+  }
+
+  event.preventDefault();
+  openBookingDetailModal(bookingKey);
 });
 
 backupInput.addEventListener("change", async (event) => {
@@ -214,6 +280,10 @@ dateRangeFilter.addEventListener("change", () => {
 customStartDate.addEventListener("change", refreshDashboardFromStoredData);
 customEndDate.addEventListener("change", refreshDashboardFromStoredData);
 trendGrouping.addEventListener("change", refreshDashboardFromStoredData);
+recentBookingsCustomDate.addEventListener("change", () => {
+  selectedRecentBookingsDate = recentBookingsCustomDate.value || "";
+  refreshDashboardFromStoredData();
+});
 
 document.querySelectorAll("#refundImpact th[data-sort]").forEach((header) => {
   header.addEventListener("click", () => {
@@ -296,20 +366,6 @@ mapMetricButtons.forEach((button) => {
 
     selectedCountryMapMetric = mapMetric;
     syncCountryMapMetricToggle();
-    refreshDashboardFromStoredData();
-  });
-});
-
-categoryMetricButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const { categoryMetric } = button.dataset;
-
-    if (!categoryMetric || selectedActivityCategoryMetric === categoryMetric) {
-      return;
-    }
-
-    selectedActivityCategoryMetric = categoryMetric;
-    syncActivityCategoryMetricToggle();
     refreshDashboardFromStoredData();
   });
 });
@@ -762,6 +818,11 @@ async function refreshDashboardFromStoredData() {
   const comparisonMetrics = calculateMetrics(comparisonTransactions);
   const payoutStatus = buildPayoutStatus(allTransactions, billingReports);
   const payoutViewData = buildPayoutViewData(allTransactions, payoutStatus);
+  currentDashboardData = {
+    allTransactions,
+    billingReports,
+    payoutStatus,
+  };
 
   const netCommission = currentMetrics.netCommission;
   const paymentRows = currentMetrics.paymentRows;
@@ -804,6 +865,7 @@ async function refreshDashboardFromStoredData() {
     "refunds",
   );
 
+  setSectionVisibility(bookingsAnalyticsSection, true);
   setSectionVisibility(analyticsSection, true);
   setSectionVisibility(summary, true);
   setSectionVisibility(details, true);
@@ -834,12 +896,28 @@ async function refreshDashboardFromStoredData() {
   syncActiveKpiCard();
   renderChart(trend, comparisonTrend, trendConfig);
 
-  renderTable("topActivities", buildTopList(transactions, "activityName"));
-  renderTable("topDestinations", buildTopList(transactions, "destination"));
-  renderDestinationCountryTable(buildTopDestinationCountries(transactions));
+  renderMetricTable(
+    "topActivities",
+    buildMetricList(transactions, "activityName", selectedTrendMetric),
+    selectedTrendMetric,
+    topActivitiesMetricColumn,
+  );
+  renderMetricTable(
+    "topDestinations",
+    buildMetricList(transactions, "destination", selectedTrendMetric),
+    selectedTrendMetric,
+    topDestinationsMetricColumn,
+  );
+  renderMetricTable(
+    "topDestinationCountries",
+    buildTopDestinationCountries(transactions, selectedTrendMetric),
+    selectedTrendMetric,
+    topDestinationCountriesMetricColumn,
+  );
   renderActivityCategories(buildActivityCategoryBreakdown(transactions));
   renderRefundImpactTable(buildRefundImpact(transactions));
   renderDailyReport(allTransactions);
+  renderRecentBookingsOverview(payoutStatus);
   renderMonthlySummary(allTransactions, []);
   renderDemographics(buildDemographics(transactions));
   renderPayouts(payoutViewData, imports);
@@ -974,6 +1052,23 @@ function formatDate(date) {
   }).format(date);
 }
 
+function formatMonthDay(date) {
+  if (!date) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
 function formatUsd(value) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -1078,32 +1173,29 @@ function renderChart(data, comparisonData = null, trendConfig) {
   });
 }
 
-function buildTopList(transactions, field, limit = 8) {
+function buildMetricList(transactions, field, metric, limit = 8) {
   const map = {};
 
-  transactions.forEach((t) => {
-    const key = t[field] || "Unknown";
+  transactions.forEach((transaction) => {
+    const key = transaction[field] || "Unknown";
 
     if (!map[key]) {
-      map[key] = 0;
+      map[key] = createMetricAggregate();
     }
 
-    map[key] += t.commissionAmountUsd;
+    accumulateMetricAggregate(map[key], transaction);
   });
 
   return Object.entries(map)
-    .sort((a, b) => b[1] - a[1])
+    .map(([name, aggregate]) => buildMetricRow(name, aggregate, metric))
+    .sort((a, b) => b.metricValue - a.metricValue)
     .slice(0, limit);
 }
 
-function buildTopDestinationCountries(transactions, limit = 8) {
+function buildTopDestinationCountries(transactions, metric, limit = 8) {
   const destinationCountryMap = {};
 
   transactions.forEach((transaction) => {
-    if (transaction.actionType !== "Payment") {
-      return;
-    }
-
     const destinationParts = splitDestination(
       transaction.destination,
       transaction.destinationCountry,
@@ -1115,27 +1207,28 @@ function buildTopDestinationCountries(transactions, limit = 8) {
     );
 
     if (!destinationCountryMap[destinationCountry]) {
-      destinationCountryMap[destinationCountry] = {
-        name: destinationCountry,
-        bookings: 0,
-      };
+      destinationCountryMap[destinationCountry] = createMetricAggregate();
     }
 
-    destinationCountryMap[destinationCountry].bookings += 1;
+    accumulateMetricAggregate(destinationCountryMap[destinationCountry], transaction);
   });
 
-  return Object.values(destinationCountryMap)
-    .sort((a, b) => b.bookings - a.bookings)
+  return Object.entries(destinationCountryMap)
+    .map(([name, aggregate]) => buildMetricRow(name, aggregate, metric))
+    .sort((a, b) => b.metricValue - a.metricValue)
     .slice(0, limit);
 }
 
-function renderDestinationCountryTable(rows) {
-  const tbody = document.querySelector("#topDestinationCountries tbody");
+function renderMetricTable(elementId, rows, metric, metricHeaderElement) {
+  const tbody = document.querySelector(`#${elementId} tbody`);
   tbody.innerHTML = "";
+  if (metricHeaderElement) {
+    metricHeaderElement.textContent = getMetricColumnLabel(metric);
+  }
 
   if (!rows.length) {
     tbody.innerHTML =
-      '<tr><td colspan="2" class="empty-row">No destination country data in this range.</td></tr>';
+      '<tr><td colspan="2" class="empty-row">No data in this range.</td></tr>';
     return;
   }
 
@@ -1143,32 +1236,86 @@ function renderDestinationCountryTable(rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${row.name}</td>
-      <td>${row.bookings.toLocaleString()}</td>
+      <td>${formatMetricValue(row.metricValue, metric)}</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-function renderTable(elementId, data) {
-  const tbody = document.querySelector(`#${elementId} tbody`);
-  tbody.innerHTML = "";
+function createMetricAggregate() {
+  return {
+    netCommission: 0,
+    paymentBookings: 0,
+    paymentCommission: 0,
+    refundCount: 0,
+  };
+}
 
-  data.forEach(([name, value]) => {
-    const row = document.createElement("tr");
+function accumulateMetricAggregate(aggregate, transaction) {
+  aggregate.netCommission += transaction.commissionAmountUsd;
 
-    row.innerHTML = `
-      <td>${name}</td>
-      <td>${formatUsd(value)}</td>
-    `;
+  if (transaction.actionType === "Payment") {
+    aggregate.paymentBookings += 1;
+    aggregate.paymentCommission += transaction.commissionAmountUsd;
+  }
 
-    tbody.appendChild(row);
-  });
+  if (transaction.actionType === "Refund") {
+    aggregate.refundCount += 1;
+  }
+}
+
+function buildMetricRow(name, aggregate, metric) {
+  return {
+    name,
+    metricValue: getMetricValueFromAggregate(aggregate, metric),
+  };
+}
+
+function getMetricValueFromAggregate(aggregate, metric) {
+  if (metric === "bookings") {
+    return aggregate.paymentBookings;
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return aggregate.paymentBookings > 0
+      ? aggregate.paymentCommission / aggregate.paymentBookings
+      : 0;
+  }
+
+  if (metric === "refunds") {
+    return aggregate.refundCount;
+  }
+
+  return aggregate.netCommission;
+}
+
+function formatMetricValue(value, metric) {
+  if (metric === "bookings" || metric === "refunds") {
+    return Number(value).toLocaleString();
+  }
+
+  return formatUsd(value);
+}
+
+function getMetricColumnLabel(metric) {
+  if (metric === "bookings") {
+    return "Bookings";
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return "Avg / Booking";
+  }
+
+  if (metric === "refunds") {
+    return "Refunds";
+  }
+
+  return "Net Commission";
 }
 
 function buildActivityCategoryBreakdown(transactions) {
   const map = {};
-  let totalBookings = 0;
-  let totalCommission = 0;
+  const totals = createMetricAggregate();
 
   transactions.forEach((transaction) => {
     const category = normalizeDimensionValue(
@@ -1181,21 +1328,33 @@ function buildActivityCategoryBreakdown(transactions) {
         name: category,
         bookings: 0,
         netCommission: 0,
+        refundCount: 0,
+        paymentCommission: 0,
       };
     }
 
     map[category].netCommission += transaction.commissionAmountUsd;
-    totalCommission += transaction.commissionAmountUsd;
+    totals.netCommission += transaction.commissionAmountUsd;
 
     if (transaction.actionType === "Payment") {
       map[category].bookings += 1;
-      totalBookings += 1;
+      map[category].paymentCommission += transaction.commissionAmountUsd;
+      totals.paymentBookings += 1;
+      totals.paymentCommission += transaction.commissionAmountUsd;
+    }
+
+    if (transaction.actionType === "Refund") {
+      map[category].refundCount += 1;
+      totals.refundCount += 1;
     }
   });
 
   const rows = Object.values(map)
     .map((item) => ({
       ...item,
+      avgCommissionPerBooking:
+        item.bookings > 0 ? item.paymentCommission / item.bookings : 0,
+      refundRate: item.bookings > 0 ? item.refundCount / item.bookings : 0,
     }))
     .filter((item) => item.bookings > 0)
     .sort((a, b) => {
@@ -1207,8 +1366,7 @@ function buildActivityCategoryBreakdown(transactions) {
     });
 
   return {
-    totalBookings,
-    totalCommission,
+    totals,
     rows,
   };
 }
@@ -1216,29 +1374,23 @@ function buildActivityCategoryBreakdown(transactions) {
 function renderActivityCategories(data) {
   const rows = getActivityCategoryRowsForMetric(
     data.rows,
-    data.totalBookings,
-    data.totalCommission,
-    selectedActivityCategoryMetric,
+    data.totals,
+    selectedTrendMetric,
   );
 
-  renderActivityCategoryTable(rows, selectedActivityCategoryMetric);
-  renderActivityCategoryChart(rows, selectedActivityCategoryMetric);
-  syncActivityCategoryMetricToggle();
+  renderActivityCategoryTable(rows, selectedTrendMetric);
+  renderActivityCategoryChart(rows, selectedTrendMetric);
 }
 
-function getActivityCategoryRowsForMetric(
-  rows,
-  totalBookings,
-  totalCommission,
-  metric,
-) {
+function getActivityCategoryRowsForMetric(rows, totals, metric) {
+  const shareBase = getMetricValueFromAggregate(totals, metric);
+
   return rows
     .map((row) => {
-      const metricValue =
-        metric === "bookings" ? row.bookings : row.netCommission;
-      const shareBase =
-        metric === "bookings" ? totalBookings : Math.abs(totalCommission);
-      const share = shareBase > 0 ? metricValue / shareBase : 0;
+      const metricValue = getCategoryMetricValue(row, metric);
+      const normalizedShareBase =
+        metric === "netCommission" ? Math.abs(shareBase) : shareBase;
+      const share = normalizedShareBase > 0 ? metricValue / normalizedShareBase : 0;
 
       return {
         ...row,
@@ -1252,15 +1404,11 @@ function getActivityCategoryRowsForMetric(
 function renderActivityCategoryTable(rows, metric) {
   const tbody = document.querySelector("#activityCategoryTable tbody");
   tbody.innerHTML = "";
-  activityCategoryMetricColumn.textContent =
-    metric === "bookings" ? "Bookings" : "Net Commission";
+  activityCategoryMetricColumn.textContent = getMetricColumnLabel(metric);
   activityCategorySecondaryColumn.textContent =
-    metric === "bookings" ? "Net Commission" : "Bookings";
-
+    getCategorySecondaryColumnLabel(metric);
   activityCategorySubtitle.textContent =
-    metric === "bookings"
-      ? "Booking share by activity category in the current filter range"
-      : "Commission share by activity category in the current filter range";
+    getCategorySubtitle(metric);
 
   if (!rows.length) {
     tbody.innerHTML =
@@ -1272,12 +1420,76 @@ function renderActivityCategoryTable(rows, metric) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${row.name}</td>
-      <td>${metric === "bookings" ? row.bookings.toLocaleString() : formatUsd(row.netCommission)}</td>
-      <td>${metric === "bookings" ? formatUsd(row.netCommission) : row.bookings.toLocaleString()}</td>
+      <td>${formatMetricValue(row.metricValue, metric)}</td>
+      <td>${getCategorySecondaryValue(row, metric)}</td>
       <td>${formatPercentage(row.share)}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function getCategoryMetricValue(row, metric) {
+  if (metric === "bookings") {
+    return row.bookings;
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return row.avgCommissionPerBooking;
+  }
+
+  if (metric === "refunds") {
+    return row.refundCount;
+  }
+
+  return row.netCommission;
+}
+
+function getCategorySecondaryColumnLabel(metric) {
+  if (metric === "bookings") {
+    return "Net Commission";
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return "Bookings";
+  }
+
+  if (metric === "refunds") {
+    return "Refund Rate";
+  }
+
+  return "Bookings";
+}
+
+function getCategorySecondaryValue(row, metric) {
+  if (metric === "bookings") {
+    return formatUsd(row.netCommission);
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return row.bookings.toLocaleString();
+  }
+
+  if (metric === "refunds") {
+    return formatPercentage(row.refundRate);
+  }
+
+  return row.bookings.toLocaleString();
+}
+
+function getCategorySubtitle(metric) {
+  if (metric === "bookings") {
+    return "Booking share by activity category in the current filter range";
+  }
+
+  if (metric === "avgCommissionPerBooking") {
+    return "Average commission per booking by activity category in the current filter range";
+  }
+
+  if (metric === "refunds") {
+    return "Refund share by activity category in the current filter range";
+  }
+
+  return "Commission share by activity category in the current filter range";
 }
 
 function renderActivityCategoryChart(rows, metric) {
@@ -1809,18 +2021,488 @@ function renderUnpaidBookingsTable(rows) {
   rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.bookingNumber}</td>
+      <td>
+        <button
+          type="button"
+          class="booking-link"
+          data-booking-key="${escapeHtml(row.id)}"
+        >
+          ${escapeHtml(row.bookingNumber)}
+        </button>
+      </td>
       <td>${row.bookedDate ? formatShortDate(row.bookedDate) : "-"}</td>
       <td>${row.participationDate ? formatShortDate(row.participationDate) : "-"}</td>
       <td>${row.ageDays.toLocaleString()}d</td>
-      <td>${row.activityName}</td>
-      <td>${row.destination}</td>
+      <td>${escapeHtml(row.activityName)}</td>
+      <td>${escapeHtml(row.destination)}</td>
       <td>${formatUsd(row.commissionAmountUsd)}</td>
-      <td>${row.payScheme}</td>
-      <td>${formatPayoutStatus(row.status)}</td>
+      <td>${escapeHtml(row.payScheme)}</td>
+      <td>${renderStatusBadge(row.status)}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function openBookingDetailModal(bookingKey) {
+  const detail = buildBookingDetailData(bookingKey);
+
+  if (!detail) {
+    return;
+  }
+
+  bookingDetailTitle.textContent = detail.title;
+  bookingDetailSubtitle.textContent = detail.subtitle;
+  bookingDetailContent.innerHTML = renderBookingDetailContent(detail);
+  bookingDetailModal.classList.remove("hidden");
+  syncModalBodyLock();
+}
+
+function closeBookingDetailModal() {
+  bookingDetailModal.classList.add("hidden");
+  bookingDetailContent.innerHTML = "";
+  syncModalBodyLock();
+}
+
+function syncModalBodyLock() {
+  const anyModalOpen =
+    !aboutModal.classList.contains("hidden") ||
+    !bookingDetailModal.classList.contains("hidden");
+
+  document.body.classList.toggle("modal-open", anyModalOpen);
+}
+
+function buildBookingDetailData(bookingKey) {
+  const { allTransactions, payoutStatus } = currentDashboardData;
+
+  if (!bookingKey || !allTransactions.length || !payoutStatus) {
+    return null;
+  }
+
+  const bookingSummary = payoutStatus.bookingSummaries.find(
+    (booking) => booking.key === bookingKey,
+  );
+
+  if (!bookingSummary) {
+    return null;
+  }
+
+  const payout = payoutStatus.byBookingKey[bookingKey] || {
+    status: "unpaid",
+    billingRows: [],
+    billRows: [],
+    deductionRows: [],
+    paidMonths: [],
+    latestPaidReportMonth: "",
+    totalPayableCommissionAmt: 0,
+    outstandingCommissionUsd: Math.max(bookingSummary.netCommissionUsd, 0),
+    payScheme: "",
+    ticketStatus: "",
+    matchSource: "",
+  };
+
+  const bookingTransactions = allTransactions
+    .filter((transaction) => getTransactionBookingKey(transaction) === bookingKey)
+    .sort((left, right) => {
+      const leftDate = parseKlookDate(left.actionDate)?.getTime() || 0;
+      const rightDate = parseKlookDate(right.actionDate)?.getTime() || 0;
+      return leftDate - rightDate;
+    });
+
+  const primaryTransaction =
+    bookingTransactions.find((transaction) => transaction.actionType === "Payment") ||
+    bookingTransactions[0];
+  const destinationParts = splitDestination(
+    bookingSummary.destination,
+    primaryTransaction?.destinationCountry,
+    primaryTransaction?.destinationRegion,
+  );
+
+  const titleIdentifier =
+    bookingSummary.bookingNumber ||
+    bookingSummary.ticketId ||
+    bookingSummary.orderId ||
+    "Unknown Booking";
+  const subtitleParts = [
+    bookingSummary.activityName,
+    bookingSummary.destination,
+    formatPayoutStatus(payout.status),
+  ].filter(Boolean);
+
+  return {
+    title: `Booking ${titleIdentifier}`,
+    subtitle: subtitleParts.join(" | "),
+    bookingSummary,
+    payout,
+    transactions: bookingTransactions,
+    billingRows: payout.billingRows,
+    primaryTransaction,
+    destinationParts,
+  };
+}
+
+function renderBookingDetailContent(detail) {
+  const {
+    bookingSummary,
+    payout,
+    transactions,
+    billingRows,
+    primaryTransaction,
+    destinationParts,
+  } = detail;
+
+  const overviewItems = [
+    ["Booking Number", bookingSummary.bookingNumber],
+    ["Ticket ID", bookingSummary.ticketId],
+    ["Order ID", bookingSummary.orderId],
+    ["Payout Status", renderStatusBadge(payout.status), true],
+    ["Booked Date", formatMaybeShortDate(bookingSummary.bookedDate)],
+    ["Participation Date", formatMaybeShortDate(bookingSummary.participationDate)],
+    ["Participants", collectUniqueValues(transactions, "participants")],
+    ["Commission Rate", collectUniqueValues(transactions, "commissionRate")],
+    [
+      "Sales Amount",
+      collectUniqueValues(
+        transactions,
+        "salesAmount",
+        (_value, _fallback, row) =>
+          formatMoneyWithCurrency(row.salesCurrency, row.salesAmount),
+      ),
+    ],
+    ["Payment Rows", bookingSummary.paymentCount.toLocaleString()],
+    ["Refund Rows", bookingSummary.refundCount.toLocaleString()],
+    ["Amendment Rows", bookingSummary.amendmentCount.toLocaleString()],
+  ];
+
+  const payoutItems = [
+    ["Billing Match", formatMatchSource(payout.matchSource)],
+    ["Pay Scheme", payout.payScheme],
+    ["Billing Ticket Status", payout.ticketStatus],
+    ["Payment Commission", formatUsd(bookingSummary.paymentCommissionUsd)],
+    ["Net Transaction Commission", formatUsd(bookingSummary.netCommissionUsd)],
+    ["Billed / Payable", formatUsd(payout.totalPayableCommissionAmt)],
+    ["Outstanding", formatUsd(payout.outstandingCommissionUsd)],
+    ["Paid Months", payout.paidMonths.join(", ") || "-"],
+    ["Latest Paid Month", payout.latestPaidReportMonth || "-"],
+  ];
+
+  const tripItems = [
+    ["Activity", bookingSummary.activityName],
+    ["Activity ID", primaryTransaction?.activityId],
+    ["Activity Category", primaryTransaction?.activityCategory],
+    ["Package Name", primaryTransaction?.packageName],
+    ["Product Type", primaryTransaction?.productType],
+    ["Destination", bookingSummary.destination],
+    ["Destination Country", destinationParts.country],
+    ["Destination Region", destinationParts.region],
+  ];
+
+  const audienceItems = [
+    [
+      "User Country",
+      collectUniqueValues(transactions, "userCountry", formatCountryLabel),
+    ],
+    ["Platform", collectUniqueValues(transactions, "platform")],
+    ["Website Name", collectUniqueValues(transactions, "websiteName")],
+  ];
+
+  const attributionItems = [
+    ["Tracking Base", collectUniqueValues(transactions, "trackingBase")],
+    ["Promo Code Type", collectUniqueValues(transactions, "promoCodeType")],
+    ["Kreator Promo Code", collectUniqueValues(transactions, "kreatorPromoCode")],
+    ["AID", collectUniqueValues(transactions, "aid")],
+    ["ADID", collectUniqueValues(transactions, "adid")],
+    ["AD Tagging", collectUniqueValues(transactions, "adTagging")],
+    ["Partner Params", collectUniqueValues(transactions, "partnerParams")],
+  ];
+
+  const supplyItems = [
+    ["Supply Category 01", collectUniqueValues(transactions, "supplyCategory01")],
+    ["Supply Category 02", collectUniqueValues(transactions, "supplyCategory02")],
+    ["Supply Category 03", collectUniqueValues(transactions, "supplyCategory03")],
+  ];
+
+  return `
+    <section class="detail-section detail-section-soft">
+      <div class="detail-section-head">
+        <h3>Booking Snapshot</h3>
+        <p>The booking itself: dates, participants, rates, and core identity.</p>
+      </div>
+      ${renderDetailKeyValueTable(overviewItems, 3)}
+    </section>
+
+    <section class="detail-section detail-section-soft">
+      <div class="detail-section-head">
+        <h3>Payout Snapshot</h3>
+        <p>How this booking maps to billing and what is still outstanding.</p>
+      </div>
+      ${renderDetailKeyValueTable(payoutItems, 3)}
+    </section>
+
+    <section class="detail-section">
+      <div class="detail-section-head">
+        <h3>Booking Metadata</h3>
+        <p>What was booked, where it is, and how the booking was attributed.</p>
+      </div>
+      <div class="detail-meta-groups">
+        ${renderMetaGroup("Trip & Product", tripItems)}
+        ${renderMetaGroup("Audience", audienceItems)}
+        ${renderMetaGroup("Attribution", attributionItems)}
+        ${renderMetaGroup("Supply Categories", supplyItems)}
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <div class="detail-section-head">
+        <h3>Transaction History</h3>
+        <p>Every imported transaction row tied to this booking.</p>
+      </div>
+      ${renderBookingTransactionsTable(transactions)}
+    </section>
+
+    <section class="detail-section">
+      <div class="detail-section-head">
+        <h3>Billing Rows</h3>
+        <p>Matched billing-report rows, if this booking has appeared in payout exports.</p>
+      </div>
+      ${renderBookingBillingTable(billingRows)}
+    </section>
+
+    <section class="detail-section">
+      <div class="detail-section-head">
+        <h3>Raw Data</h3>
+        <p>Exact imported rows for audit and debugging.</p>
+      </div>
+      ${renderRawDataSection("Transaction Rows JSON", transactions)}
+      ${renderRawDataSection("Billing Rows JSON", billingRows)}
+    </section>
+  `;
+}
+
+function renderMetaGroup(title, items) {
+  return `
+    <article class="detail-meta-group">
+      <h4>${escapeHtml(title)}</h4>
+      ${renderDetailKeyValueTable(items, 1)}
+    </article>
+  `;
+}
+
+function renderDetailKeyValueTable(items, columns = 2) {
+  const normalizedColumns = Math.max(1, Math.min(columns, 4));
+
+  return `
+    <div class="detail-kv-wrap">
+      <table class="detail-kv-table detail-kv-columns-${normalizedColumns}">
+        <tbody>
+          ${items
+            .map(([label, value, isHtml]) => `
+              <tr>
+                <th>${escapeHtml(label)}</th>
+                <td>${
+                  isHtml ? value : escapeHtml(formatDetailValue(value))
+                }</td>
+              </tr>
+            `)
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderBookingTransactionsTable(rows) {
+  if (!rows.length) {
+    return '<p class="detail-empty">No transaction rows found for this booking.</p>';
+  }
+
+  const body = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.actionType || "-")}</td>
+      <td>${escapeHtml(formatMaybeShortDate(row.actionDate))}</td>
+      <td>${escapeHtml(formatMaybeShortDate(row.participationDate))}</td>
+      <td>${escapeHtml(row.participants || "-")}</td>
+      <td>${escapeHtml(row.commissionRate || "-")}</td>
+      <td>${formatUsd(row.commissionAmountUsd || 0)}</td>
+      <td>${formatMoneyWithCurrency(row.salesCurrency, row.salesAmount)}</td>
+      <td>${escapeHtml(row.platform || "-")}</td>
+      <td>${escapeHtml(formatCountryLabel(row.userCountry, row.userCountry || "-"))}</td>
+      <td>${escapeHtml(row.trackingBase || "-")}</td>
+      <td>${escapeHtml(row.kreatorPromoCode || "-")}</td>
+      <td>${escapeHtml(row.sourceFileName || "-")}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div class="detail-table-wrap">
+      <table class="detail-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Action Date</th>
+            <th>Participation</th>
+            <th>Participants</th>
+            <th>Rate</th>
+            <th>Commission</th>
+            <th>Sales</th>
+            <th>Platform</th>
+            <th>User Country</th>
+            <th>Tracking</th>
+            <th>Promo</th>
+            <th>Source File</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderBookingBillingTable(rows) {
+  if (!rows.length) {
+    return '<p class="detail-empty">No billing rows matched to this booking yet.</p>';
+  }
+
+  const body = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.reportMonth || "-")}</td>
+      <td>${escapeHtml(row.action || "-")}</td>
+      <td>${escapeHtml(row.ticketStatus || "-")}</td>
+      <td>${formatUsd(row.payableCommissionAmt || 0)}</td>
+      <td>${formatUsd(row.salesAmountUsd || 0)}</td>
+      <td>${formatUsd(row.refundedSalesAmountUsd || 0)}</td>
+      <td>${escapeHtml(formatMaybeShortDate(row.refundDate))}</td>
+      <td>${escapeHtml(row.payScheme || "-")}</td>
+      <td>${escapeHtml(row.sourceFileName || "-")}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div class="detail-table-wrap">
+      <table class="detail-table">
+        <thead>
+          <tr>
+            <th>Report Month</th>
+            <th>Action</th>
+            <th>Ticket Status</th>
+            <th>Payable</th>
+            <th>Sales USD</th>
+            <th>Refunded USD</th>
+            <th>Refund Date</th>
+            <th>Pay Scheme</th>
+            <th>Source File</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderRawDataSection(title, rows) {
+  return `
+    <details class="raw-data-block">
+      <summary>${escapeHtml(title)}</summary>
+      <pre>${escapeHtml(JSON.stringify(rows, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function renderStatusBadge(status) {
+  return `
+    <span class="status-badge ${getPayoutStatusClass(status)}">
+      ${escapeHtml(formatPayoutStatus(status))}
+    </span>
+  `;
+}
+
+function getPayoutStatusClass(status) {
+  const classMap = {
+    unpaid: "status-unpaid",
+    paid: "status-paid",
+    paid_adjusted: "status-adjusted",
+    deduction_only: "status-deduction",
+    cleared_refund: "status-refunded",
+  };
+
+  return classMap[status] || "status-neutral";
+}
+
+function collectUniqueValues(rows, field, formatter = null) {
+  const values = [];
+  const seen = new Set();
+
+  rows.forEach((row) => {
+    const rawValue = row[field];
+
+    if (rawValue === null || rawValue === undefined || rawValue === "") {
+      return;
+    }
+
+    const normalizedValue = String(rawValue).trim();
+
+    if (!normalizedValue || seen.has(normalizedValue)) {
+      return;
+    }
+
+    seen.add(normalizedValue);
+    values.push({
+      value: normalizedValue,
+      row,
+    });
+  });
+
+  if (!values.length) {
+    return "-";
+  }
+
+  return values
+    .map((entry) =>
+      formatter ? formatter(entry.value, entry.value, entry.row) : entry.value
+    )
+    .join(", ");
+}
+
+function formatMoneyWithCurrency(currency, amount) {
+  if (!Number.isFinite(amount) || amount === 0) {
+    return currency ? `${currency} 0.00` : "$0.00";
+  }
+
+  if (!currency || currency === "USD") {
+    return formatUsd(amount);
+  }
+
+  return `${currency} ${amount.toFixed(2)}`;
+}
+
+function formatMaybeShortDate(value) {
+  return value ? formatShortDate(value) : "-";
+}
+
+function formatMatchSource(value) {
+  const labels = {
+    ticketId: "Ticket ID",
+    bookingNumber: "Booking Number",
+    orderId: "Order ID",
+  };
+
+  return labels[value] || "-";
+}
+
+function formatDetailValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  return String(value);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function formatPayoutStatus(status) {
@@ -2035,15 +2717,18 @@ function isCompatibleTransaction(transaction) {
 function hideDashboardSections() {
   details.dataset.hasData = details.textContent.trim() ? "true" : "false";
   dailyReport.dataset.hasData = "false";
+  recentBookingsSection.dataset.hasData = "false";
   monthlySummary.dataset.hasData = "false";
 
   setSectionVisibility(importSection, true);
+  setSectionVisibility(bookingsAnalyticsSection, false);
   setSectionVisibility(summary, false);
   setSectionVisibility(details, false);
   setSectionVisibility(filters, false);
   setSectionVisibility(viewTabs, true);
   setSectionVisibility(analyticsSection, false);
   setSectionVisibility(dailyReport, false);
+  setSectionVisibility(recentBookingsSection, false);
   setSectionVisibility(monthlySummary, false);
   setSectionVisibility(demographicsSection, false);
   setSectionVisibility(payoutsSection, false);
@@ -2062,12 +2747,12 @@ function hideCompatibilityNotice() {
 
 function openAboutModal() {
   aboutModal.classList.remove("hidden");
-  document.body.classList.add("modal-open");
+  syncModalBodyLock();
 }
 
 function closeAboutModal() {
   aboutModal.classList.add("hidden");
-  document.body.classList.remove("modal-open");
+  syncModalBodyLock();
 }
 
 function hydrateVersionUi() {
@@ -2088,11 +2773,16 @@ function syncDashboardView() {
     isImport && details.dataset.hasData === "true",
   );
   setSectionVisibility(filters, isBookings);
+  setSectionVisibility(bookingsAnalyticsSection, isBookings);
   setSectionVisibility(summary, isBookings);
   setSectionVisibility(analyticsSection, isBookings);
   setSectionVisibility(
     dailyReport,
     isOverview && dailyReport.dataset.hasData === "true",
+  );
+  setSectionVisibility(
+    recentBookingsSection,
+    isOverview && recentBookingsSection.dataset.hasData === "true",
   );
   setSectionVisibility(
     monthlySummary,
@@ -2571,6 +3261,133 @@ function renderDailyReport(transactions) {
 
   dailyReport.dataset.hasData = "true";
   setSectionVisibility(dailyReport, activeDashboardView === "overview");
+}
+
+function renderRecentBookingsOverview(payoutStatus) {
+  const bookingRows = payoutStatus.bookingSummaries
+    .filter((booking) => booking.bookedDate)
+    .sort((left, right) => right.bookedDate.localeCompare(left.bookedDate));
+
+  if (!bookingRows.length) {
+    recentBookingsSection.dataset.hasData = "false";
+    setSectionVisibility(recentBookingsSection, false);
+    return;
+  }
+
+  const latestDate = bookingRows[0].bookedDate;
+  const quickDates = [0, 1, 2]
+    .map((offset) => {
+      const date = parseKlookDate(latestDate);
+
+      if (!date) {
+        return "";
+      }
+
+      return formatIsoDate(addDays(date, -offset));
+    })
+    .filter(Boolean);
+
+  if (
+    !selectedRecentBookingsDate ||
+    !parseKlookDate(selectedRecentBookingsDate)
+  ) {
+    selectedRecentBookingsDate = latestDate;
+  }
+
+  recentBookingsCustomDate.value = selectedRecentBookingsDate;
+  renderRecentBookingsDateFilters(quickDates, selectedRecentBookingsDate);
+
+  const selectedRows = bookingRows
+    .filter((booking) => booking.bookedDate === selectedRecentBookingsDate)
+    .map((booking) => {
+      const payout = payoutStatus.byBookingKey[booking.key] || {
+        status: "unpaid",
+        payScheme: "",
+      };
+
+      return {
+        key: booking.key,
+        bookingNumber:
+          booking.bookingNumber || booking.ticketId || booking.orderId || "-",
+        bookedDate: booking.bookedDate,
+        participationDate: booking.participationDate,
+        activityName: booking.activityName || "Unknown",
+        destination: booking.destination || "Unknown",
+        commissionAmountUsd: booking.netCommissionUsd,
+        payScheme: payout.payScheme || "Unknown",
+        status: payout.status,
+      };
+    })
+    .sort((left, right) => right.commissionAmountUsd - left.commissionAmountUsd);
+
+  const selectedDateObject = parseKlookDate(selectedRecentBookingsDate);
+
+  recentBookingsSubtitle.textContent = selectedRows.length
+    ? `${selectedRows.length.toLocaleString()} bookings made on ${formatDate(selectedDateObject)}`
+    : `No bookings were imported for ${formatDate(selectedDateObject)}.`;
+
+  renderRecentBookingsTable(selectedRows);
+  recentBookingsSection.dataset.hasData = "true";
+  setSectionVisibility(
+    recentBookingsSection,
+    activeDashboardView === "overview",
+  );
+}
+
+function renderRecentBookingsDateFilters(quickDates, selectedDate) {
+  recentBookingsDateFilters.innerHTML = "";
+
+  quickDates.forEach((dateValue) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `metric-toggle-btn${
+      dateValue === selectedDate ? " active" : ""
+    }`;
+    button.textContent = formatMonthDay(parseKlookDate(dateValue));
+    button.setAttribute("aria-pressed", String(dateValue === selectedDate));
+    button.addEventListener("click", () => {
+      selectedRecentBookingsDate = dateValue;
+      recentBookingsCustomDate.value = dateValue;
+      refreshDashboardFromStoredData();
+    });
+    recentBookingsDateFilters.appendChild(button);
+  });
+}
+
+function renderRecentBookingsTable(rows) {
+  const tbody = document.querySelector("#recentBookingsTable tbody");
+  tbody.innerHTML = "";
+
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="8" class="empty-row">No bookings for this day.</td></tr>';
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>
+        <button
+          type="button"
+          class="booking-link"
+          data-booking-key="${escapeHtml(row.key)}"
+        >
+          ${escapeHtml(row.bookingNumber)}
+        </button>
+      </td>
+      <td>${escapeHtml(formatMaybeShortDate(row.bookedDate))}</td>
+      <td>${escapeHtml(formatMaybeShortDate(row.participationDate))}</td>
+      <td>${escapeHtml(row.activityName)}</td>
+      <td>${escapeHtml(row.destination)}</td>
+      <td>${formatUsd(row.commissionAmountUsd)}</td>
+      <td>${escapeHtml(row.payScheme)}</td>
+      <td>${renderStatusBadge(row.status)}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
 }
 
 function formatShortDate(value) {
@@ -3205,15 +4022,6 @@ function syncCountryMapMetricToggle() {
 function syncPayoutMetricToggle() {
   payoutMetricButtons.forEach((button) => {
     const isActive = button.dataset.payoutMetric === selectedPayoutMetric;
-    button.classList.toggle("active", isActive);
-    button.setAttribute("aria-pressed", String(isActive));
-  });
-}
-
-function syncActivityCategoryMetricToggle() {
-  categoryMetricButtons.forEach((button) => {
-    const isActive =
-      button.dataset.categoryMetric === selectedActivityCategoryMetric;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
