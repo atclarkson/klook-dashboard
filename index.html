@@ -231,14 +231,25 @@
                 Full transaction and billing picture for this booking.
               </p>
             </div>
-            <button
-              id="closeBookingDetailBtn"
-              type="button"
-              class="modal-close"
-              aria-label="Close booking detail dialog"
-            >
-              Close
-            </button>
+            <div class="modal-actions">
+              <a
+                id="openActivityLink"
+                class="modal-link-btn hidden"
+                href="#"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Activity
+              </a>
+              <button
+                id="closeBookingDetailBtn"
+                type="button"
+                class="modal-close"
+                aria-label="Close booking detail dialog"
+              >
+                Close
+              </button>
+            </div>
           </div>
 
           <div id="bookingDetailContent" class="modal-content"></div>
@@ -336,6 +347,31 @@
           </div>
         </section>
 
+        <section id="importLogSection" class="import-log">
+          <div class="card-header-row">
+            <div>
+              <h2>Import Log</h2>
+              <p>Recent imports stored in this browser.</p>
+            </div>
+          </div>
+
+          <div class="import-log-table-wrap">
+            <table id="importLogTable">
+              <thead>
+                <tr>
+                  <th>Imported</th>
+                  <th>Type</th>
+                  <th>File</th>
+                  <th>Report Range</th>
+                  <th>Added</th>
+                  <th>Skipped</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
         <section id="compatibilityNotice" class="compatibility-notice hidden">
           <h2>Data Re-Import Required</h2>
           <p id="compatibilityMessage">
@@ -365,7 +401,7 @@
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Commission</th>
+                <th>Net Commission</th>
                 <th>Bookings</th>
               </tr>
             </thead>

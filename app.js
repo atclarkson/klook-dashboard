@@ -31,6 +31,7 @@ let currentDashboardData = {
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const importSection = document.getElementById("importSection");
+const importLogTable = document.querySelector("#importLogTable tbody");
 
 const summary = document.getElementById("summary");
 const bookingsAnalyticsSection = document.getElementById(
@@ -60,6 +61,7 @@ const aboutModal = document.getElementById("aboutModal");
 const closeAboutBtn = document.getElementById("closeAboutBtn");
 const bookingDetailModal = document.getElementById("bookingDetailModal");
 const closeBookingDetailBtn = document.getElementById("closeBookingDetailBtn");
+const openActivityLink = document.getElementById("openActivityLink");
 const bookingDetailContent = document.getElementById("bookingDetailContent");
 const bookingDetailTitle = document.getElementById("bookingDetailTitle");
 const bookingDetailSubtitle = document.getElementById("bookingDetailSubtitle");
@@ -150,6 +152,7 @@ initApp();
 async function initApp() {
   hydrateVersionUi();
   db = await openDatabase();
+  await migrateBillingReportRows();
   await refreshDashboardFromStoredData();
 }
 
@@ -482,6 +485,9 @@ function parseCsvFile(file) {
 async function importRows(fileName, rows) {
   const existingIds = await getAllTransactionIds();
   const transactions = rows.map((row) => normalizeRow(fileName, row));
+  const reportRange =
+    getImportReportRangeFromFileName(fileName) ||
+    getImportReportRangeFromTransactions(transactions, "actionDate");
 
   let rowsAdded = 0;
   let duplicateRowsSkipped = 0;
@@ -526,6 +532,9 @@ async function importRows(fileName, rows) {
     fileName,
     importedAt,
     importType: "ticket",
+    reportRangeLabel: reportRange.label,
+    reportStartDate: reportRange.startDate,
+    reportEndDate: reportRange.endDate,
     rowsFound: rows.length,
     rowsAdded,
     duplicateRowsSkipped,
@@ -543,6 +552,9 @@ async function importRows(fileName, rows) {
 async function importBillingRows(fileName, rows) {
   const existingIds = await getAllBillingReportIds();
   const billingRows = rows.map((row) => normalizeBillingRow(fileName, row));
+  const reportRange =
+    getImportReportRangeFromFileName(fileName) ||
+    getImportReportRangeFromBillingRows(billingRows);
 
   let rowsAdded = 0;
   let duplicateRowsSkipped = 0;
@@ -572,6 +584,9 @@ async function importBillingRows(fileName, rows) {
     importedAt: new Date().toISOString(),
     importType: "billing",
     reportMonth: getBillingReportMonth(rows),
+    reportRangeLabel: reportRange.label,
+    reportStartDate: reportRange.startDate,
+    reportEndDate: reportRange.endDate,
     rowsFound: rows.length,
     rowsAdded,
     duplicateRowsSkipped,
@@ -666,15 +681,14 @@ function normalizeBillingRow(fileName, row) {
   const destination = getField(row, ["Destination"]);
   const destinationParts = splitDestination(destination);
 
-  const id = createDedupeKey([
-    fileName,
+  const id = createBillingReportId({
     reportMonth,
     orderId,
     ticketId,
     bookingNumber,
     action,
     payableCommissionUsd,
-  ]);
+  });
 
   return {
     id,
@@ -751,6 +765,77 @@ function normalizeBillingRow(fileName, row) {
     adTagging: getField(row, ["AD Tagging"]),
     raw: row,
   };
+}
+
+function createBillingReportId({
+  reportMonth,
+  orderId,
+  ticketId,
+  bookingNumber,
+  action,
+  payableCommissionUsd,
+}) {
+  return createDedupeKey([
+    reportMonth,
+    orderId,
+    ticketId,
+    bookingNumber,
+    action,
+    payableCommissionUsd,
+  ]);
+}
+
+async function migrateBillingReportRows() {
+  const billingReports = await getAllBillingReports();
+
+  if (!billingReports.length) {
+    return;
+  }
+
+  const canonicalRows = [];
+  const seenIds = new Set();
+  let changed = false;
+
+  billingReports.forEach((row) => {
+    const canonicalId = createBillingReportId({
+      reportMonth: row.reportMonth,
+      orderId: row.orderId,
+      ticketId: row.ticketId,
+      bookingNumber: row.bookingNumber,
+      action: row.action,
+      payableCommissionUsd: row.payableCommissionAmt,
+    });
+
+    if (row.id !== canonicalId) {
+      changed = true;
+    }
+
+    if (seenIds.has(canonicalId)) {
+      changed = true;
+      return;
+    }
+
+    seenIds.add(canonicalId);
+    canonicalRows.push({
+      ...row,
+      id: canonicalId,
+    });
+  });
+
+  if (!changed) {
+    return;
+  }
+
+  const transaction = db.transaction("billingReports", "readwrite");
+  const store = transaction.objectStore("billingReports");
+
+  store.clear();
+
+  canonicalRows.forEach((row) => {
+    store.add(row);
+  });
+
+  await waitForTransaction(transaction);
 }
 
 function isTicketReportRows(rows) {
@@ -836,6 +921,7 @@ async function refreshDashboardFromStoredData() {
   refundRowsEl.textContent = refundRows.toLocaleString();
   dateRangeEl.textContent = `Date range: ${getDateRangeText(actionDates)}`;
   billingStatusEl.textContent = getLatestBillingStatusText(imports, payoutStatus);
+  renderImportLog(imports);
 
   renderKpiComparison(
     netCommissionCompareEl,
@@ -898,7 +984,7 @@ async function refreshDashboardFromStoredData() {
 
   renderMetricTable(
     "topActivities",
-    buildMetricList(transactions, "activityName", selectedTrendMetric),
+    buildTopActivitiesList(transactions, selectedTrendMetric),
     selectedTrendMetric,
     topActivitiesMetricColumn,
   );
@@ -1044,6 +1130,79 @@ function getDateRangeText(dates) {
   return `${formatDate(firstDate)} to ${formatDate(lastDate)}`;
 }
 
+function getImportReportRangeFromTransactions(transactions, field) {
+  const dates = transactions.map((transaction) => transaction[field]).filter(Boolean);
+  return buildDateRangeSummary(dates);
+}
+
+function getImportReportRangeFromFileName(fileName) {
+  const match = String(fileName || "").match(
+    /(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const startDate = parseKlookDate(match[1]);
+  const endDate = parseKlookDate(match[2]);
+
+  if (!startDate || !endDate) {
+    return null;
+  }
+
+  return {
+    label: `${formatDate(startDate)} to ${formatDate(endDate)}`,
+    startDate: formatIsoDate(startDate),
+    endDate: formatIsoDate(endDate),
+  };
+}
+
+function getImportReportRangeFromBillingRows(rows) {
+  const bookDates = rows.map((row) => row.bookDate).filter(Boolean);
+  const participationDates = rows.map((row) => row.participationDate).filter(Boolean);
+
+  if (bookDates.length) {
+    return buildDateRangeSummary(bookDates);
+  }
+
+  if (participationDates.length) {
+    return buildDateRangeSummary(participationDates);
+  }
+
+  const months = [...new Set(rows.map((row) => row.reportMonth).filter(Boolean))].sort();
+
+  if (!months.length) {
+    return { label: "Unknown", startDate: "", endDate: "" };
+  }
+
+  return {
+    label: months.length === 1 ? months[0] : `${months[0]} to ${months[months.length - 1]}`,
+    startDate: months[0],
+    endDate: months[months.length - 1],
+  };
+}
+
+function buildDateRangeSummary(dateStrings) {
+  const sortedDates = [...dateStrings]
+    .map(parseKlookDate)
+    .filter((date) => date !== null)
+    .sort((a, b) => a - b);
+
+  if (!sortedDates.length) {
+    return { label: "Unknown", startDate: "", endDate: "" };
+  }
+
+  const firstDate = formatIsoDate(sortedDates[0]);
+  const lastDate = formatIsoDate(sortedDates[sortedDates.length - 1]);
+
+  return {
+    label: `${formatDate(sortedDates[0])} to ${formatDate(sortedDates[sortedDates.length - 1])}`,
+    startDate: firstDate,
+    endDate: lastDate,
+  };
+}
+
 function formatDate(date) {
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -1074,6 +1233,22 @@ function formatUsd(value) {
     style: "currency",
     currency: "USD",
   }).format(value);
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function createDedupeKey(parts) {
@@ -1192,6 +1367,35 @@ function buildMetricList(transactions, field, metric, limit = 8) {
     .slice(0, limit);
 }
 
+function buildTopActivitiesList(transactions, metric, limit = 8) {
+  const map = {};
+
+  transactions.forEach((transaction) => {
+    const key = transaction.activityName || "Unknown";
+
+    if (!map[key]) {
+      map[key] = {
+        aggregate: createMetricAggregate(),
+        activityId: "",
+      };
+    }
+
+    accumulateMetricAggregate(map[key].aggregate, transaction);
+
+    if (!map[key].activityId && transaction.activityId) {
+      map[key].activityId = String(transaction.activityId).trim();
+    }
+  });
+
+  return Object.entries(map)
+    .map(([name, value]) => ({
+      ...buildMetricRow(name, value.aggregate, metric),
+      activityId: value.activityId,
+    }))
+    .sort((a, b) => b.metricValue - a.metricValue)
+    .slice(0, limit);
+}
+
 function buildTopDestinationCountries(transactions, metric, limit = 8) {
   const destinationCountryMap = {};
 
@@ -1235,11 +1439,35 @@ function renderMetricTable(elementId, rows, metric, metricHeaderElement) {
   rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${row.name}</td>
+      <td>${renderMetricNameCell(elementId, row)}</td>
       <td>${formatMetricValue(row.metricValue, metric)}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function renderMetricNameCell(elementId, row) {
+  const name = escapeHtml(row.name);
+
+  if (elementId !== "topActivities" || !row.activityId) {
+    return name;
+  }
+
+  const activityUrl =
+    `https://www.klook.com/activity/${encodeURIComponent(row.activityId)}/`;
+
+  return `
+    <a
+      class="metric-text-link"
+      href="${activityUrl}"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open ${name} on Klook"
+      title="Open on Klook"
+    >
+      ${name}
+    </a>
+  `;
 }
 
 function createMetricAggregate() {
@@ -1595,6 +1823,61 @@ function renderDemographics(data) {
   syncCountryMapMetricToggle();
 
   demographicsSection.classList.remove("hidden");
+}
+
+function renderImportLog(imports) {
+  if (!importLogTable) {
+    return;
+  }
+
+  importLogTable.innerHTML = "";
+
+  const sortedImports = [...imports].sort((left, right) =>
+    String(right.importedAt || "").localeCompare(String(left.importedAt || ""))
+  );
+
+  if (!sortedImports.length) {
+    importLogTable.innerHTML =
+      '<tr><td colspan="6" class="empty-row">No imports yet.</td></tr>';
+    return;
+  }
+
+  sortedImports.forEach((item) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(formatDateTime(item.importedAt))}</td>
+      <td>${escapeHtml(formatImportType(item))}</td>
+      <td>${escapeHtml(item.fileName || "-")}</td>
+      <td>${escapeHtml(formatImportRange(item))}</td>
+      <td>${Number(item.rowsAdded || 0).toLocaleString()}</td>
+      <td>${Number(item.duplicateRowsSkipped || 0).toLocaleString()}</td>
+    `;
+    importLogTable.appendChild(tr);
+  });
+}
+
+function formatImportType(item) {
+  if (item.importType === "billing") {
+    return "Billing";
+  }
+
+  if (item.importType === "ticket") {
+    return "Ticket";
+  }
+
+  return "Unknown";
+}
+
+function formatImportRange(item) {
+  if (item.reportRangeLabel) {
+    return item.reportRangeLabel;
+  }
+
+  if (item.reportMonth) {
+    return item.reportMonth;
+  }
+
+  return "Unknown";
 }
 
 async function exportBackup() {
@@ -2052,6 +2335,7 @@ function openBookingDetailModal(bookingKey) {
 
   bookingDetailTitle.textContent = detail.title;
   bookingDetailSubtitle.textContent = detail.subtitle;
+  syncActivityLink(detail.primaryTransaction?.activityId);
   bookingDetailContent.innerHTML = renderBookingDetailContent(detail);
   bookingDetailModal.classList.remove("hidden");
   syncModalBodyLock();
@@ -2060,6 +2344,7 @@ function openBookingDetailModal(bookingKey) {
 function closeBookingDetailModal() {
   bookingDetailModal.classList.add("hidden");
   bookingDetailContent.innerHTML = "";
+  syncActivityLink("");
   syncModalBodyLock();
 }
 
@@ -2069,6 +2354,21 @@ function syncModalBodyLock() {
     !bookingDetailModal.classList.contains("hidden");
 
   document.body.classList.toggle("modal-open", anyModalOpen);
+}
+
+function syncActivityLink(activityId) {
+  const normalizedActivityId = String(activityId || "").trim();
+
+  if (!normalizedActivityId) {
+    openActivityLink.classList.add("hidden");
+    openActivityLink.setAttribute("hidden", "");
+    openActivityLink.setAttribute("href", "#");
+    return;
+  }
+
+  openActivityLink.href = `https://www.klook.com/activity/${encodeURIComponent(normalizedActivityId)}/`;
+  openActivityLink.classList.remove("hidden");
+  openActivityLink.removeAttribute("hidden");
 }
 
 function buildBookingDetailData(bookingKey) {
@@ -2655,6 +2955,7 @@ async function importBackup(file) {
   }
 
   await waitForTransaction(transaction);
+  await migrateBillingReportRows();
   await refreshDashboardFromStoredData();
 
   fileNameEl.textContent =
@@ -3195,30 +3496,32 @@ function renderRefundImpactTable(data) {
 }
 
 function renderDailyReport(transactions) {
-  const payments = transactions.filter((t) => t.actionType === "Payment");
   const map = {};
 
-  payments.forEach((transaction) => {
+  transactions.forEach((transaction) => {
     if (!transaction.actionDate) {
       return;
     }
 
     if (!map[transaction.actionDate]) {
       map[transaction.actionDate] = {
-        commission: 0,
+        netCommission: 0,
         bookings: 0,
       };
     }
 
-    map[transaction.actionDate].commission += transaction.commissionAmountUsd;
-    map[transaction.actionDate].bookings += 1;
+    map[transaction.actionDate].netCommission += transaction.commissionAmountUsd;
+
+    if (transaction.actionType === "Payment") {
+      map[transaction.actionDate].bookings += 1;
+    }
   });
 
   const allDays = Object.entries(map)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, data]) => ({
       date,
-      commission: data.commission,
+      netCommission: data.netCommission,
       bookings: data.bookings,
     }));
 
@@ -3230,7 +3533,7 @@ function renderDailyReport(transactions) {
     return;
   }
 
-  const total = days.reduce((sum, day) => sum + day.commission, 0);
+  const total = days.reduce((sum, day) => sum + day.netCommission, 0);
   const totalBookings = days.reduce((sum, day) => sum + day.bookings, 0);
   const average = total / days.length;
 
@@ -3252,7 +3555,7 @@ function renderDailyReport(transactions) {
 
     row.innerHTML = `
     <td>${formatShortDate(day.date)}</td>
-    <td>${formatUsd(day.commission)}</td>
+    <td>${formatUsd(day.netCommission)}</td>
     <td>${day.bookings.toLocaleString()}</td>
   `;
 

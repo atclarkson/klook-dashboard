@@ -17,6 +17,14 @@ When releasing:
 
 ## Unreleased
 
+- added an `Open Activity` button to the booking modal header that links to the live Klook activity page when an `Activity ID` is available
+- made linked activity names in `Top Activities` open directly on Klook without a separate external-link button
+- added an `Import Log` table to the `Import` tab showing file name, report type, report date range, rows added, and rows skipped for each saved import
+- made import-log report ranges prefer the date span encoded in Klook export filenames such as `2026-04-27_2026-05-01_ticket_report.csv`
+- fixed billing-report dedupe so filenames are no longer part of the billing row identity, and automatically normalize previously saved billing rows to remove filename-based duplicates
+- fixed the `Overview` 30-day daily report to net refunds into daily commission and added a `Sales After Refund` column
+- removed the `Sales After Refund` column from the `Overview` 30-day daily report to keep that table focused on net commission and bookings only
+
 ## v2.1.2
 
 - added country-flag emoji to the `Users by Country` and `Country Ranking` tables when ISO country codes are available
